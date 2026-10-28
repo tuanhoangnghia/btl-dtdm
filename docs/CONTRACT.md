@@ -42,7 +42,7 @@ Chỉ chủ sở hữu được sửa. Cần thay đổi ở phần của ngư�
 Chỉ có **1 cụm**: 3 máy GCP, project GCP do A tạo.
 
 1. **Chỉ A** được chạy `kolla-ansible` và sửa cấu hình host/GCP. B và C cần gì thì nhắn A.
-2. Bật/tắt cụm (`infra/gcp/gcp-up.sh` / `gcp-down.sh`): ai cũng được làm (A cấp quyền IAM), nhưng **phải báo vào nhóm chat trước**. **Không tắt** khi có người đang báo "đang dùng cụm".
+2. Bật/tắt cụm: ai cũng được làm (A cấp quyền IAM), **chỉ bằng** `infra/gcp/gcp-up.sh` / `gcp-down.sh`, **không** chạy `gcloud compute instances stop` hay bấm Stop trong Console. Khi làm việc phải giữ khóa: `infra/gcp/cj-lock.sh acquire <A|B|C> "lý do" [giờ]` và nhả khi xong (`release`). `gcp-down.sh` từ chối tắt nếu người khác đang giữ khóa (khóa tự hết hạn sau 4 giờ). Xem cách dùng ở `CLAUDE.md`.
 3. Mỗi người dùng **user OpenStack riêng** (`tuan`, `trong`, `phuong`), role `admin` trên project `cloudjudge`. Truy cập: SSH vào controller **qua Tailscale** (hostname `cj-controller`), user Linux riêng.
 4. Chỉ thao tác stack của mình: A → `cj-net`, C → `cj-data` và `cj-mon`, B → `cj-app`. **Không xóa hoặc update stack của người khác.**
 5. Thứ tự stack phụ thuộc nhau: `cj-net` → `cj-data` → `cj-app` → `cj-mon`. Xóa thì theo thứ tự ngược lại, và phải báo trước.

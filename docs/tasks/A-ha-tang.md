@@ -38,15 +38,18 @@
 - Octavia lỗi: topology SINGLE → HAProxy VM (kế hoạch D3). Báo B vì ảnh hưởng `cj-app`.
 
 ## Thông tin cụm (A cập nhật, B/C đọc)
-- PROJECT_ID: `…` · BILLING_ID: `…` · CTL_IP: `…`
-- Tailscale controller: `…` · bastion: `…`
+- PROJECT_ID: `omega-dahlia-468315-f6` · BILLING_ID: `01BE00-008CAB-253DE8` (không có quyền xem/tạo budget bằng CLI) · CTL_IP: `34.124.240.64` (static `cj-ctl-ip`)
+- gcloud: dùng cấu hình riêng `cloudjudge` (`source infra/gcp/00-vars.sh` đặt sẵn `CLOUDSDK_ACTIVE_CONFIG_NAME`); tài khoản `hoangnghiatuan297@gmail.com`. **Không** dùng cấu hình `default` (trỏ project khác).
+- Đĩa: quota SSD vùng chỉ **250 GB** (không phải 340 như kế hoạch). Hiện tại: controller boot 100 + cinder 50 (pd-balanced), swift 30 (pd-standard), 2 compute boot **48 GB** mỗi máy (pd-balanced) → SSD 246 GB. Không còn dư để thêm đĩa SSD.
+- Project còn 2 máy cũ `compute`, `controller` (asia-southeast1-b, tắt, tạo 23/9) không thuộc dự án này, đừng xóa nếu chưa hỏi chủ.
+- Tailscale controller: `cj-controller` = `100.98.68.95` · bastion: `…`
 - Phiên bản Kolla-Ansible thực tế: `…`
-- Tổng giờ chạy cụm: `…` / 300
+- Tổng giờ chạy cụm: `~1,2` / 300 (cập nhật 28/10 tối)
 
 ## Tiến độ
-- [ ] Repo + Tailscale + IAM cho B, C
-- [ ] Phase 1 GCP (`/dev/kvm` OK trên 3 máy)
-- [ ] Phase 2 host
+- [ ] Repo + Tailscale + IAM cho B, C  (chưa: repo chưa push, Tailscale chưa tạo, B/C chưa có quyền GCP)
+- [x] Phase 1 GCP (`/dev/kvm` OK trên 3 máy, 28/10) — budget alert chưa đặt (xem Nhật ký)
+- [x] Phase 2 host (28/10): veth, NAT, LVM, đĩa Swift, Tailscale controller, SSH key Kolla. **Còn việc tay:** duyệt 2 subnet route trong Tailscale admin
 - [ ] Phase 3 Kolla deploy, service đều up
 - [ ] Phase 4 smoke test qua
 - [ ] User/app cred/Swift ACL/`infra.env`
@@ -56,4 +59,8 @@
 - [ ] Báo cáo phần A, README
 
 ## Nhật ký
-- 
+- 28/10 tối (A): Phase 1 xong. VPC `cj-vpc` MTU 1500, subnet 10.10.0.0/24, 4 firewall rule, IP tĩnh `34.124.240.64`. 3 máy tạo xong, đều có `/dev/kvm` (vmx > 0), `ens4`, ra Internet được; controller có `/dev/disk/by-id/google-cinder` (50G) và `google-swift` (30G). SSH vào qua `ssh cj-ctl` / `cj-c1` / `cj-c2` (key `~/.ssh/cloudjudge`). Đã **tắt cả 3 máy**; bật lại bằng `bash infra/gcp/gcp-up.sh`.
+- 28/10 tối (A): quota SSD vùng chỉ 250 GB → đổi đĩa Swift sang pd-standard, boot compute 48 GB (xem mục Thông tin cụm).
+- 28/10 tối (A): **chưa đặt budget alert**: tài khoản `hoangnghiatuan297@gmail.com` không liệt kê được billing account và Billing Budgets API chưa bật. Việc cần làm tay trong Console → Billing → Budgets: cảnh báo 50/75/90% của ~₫7,7 triệu.
+- 28/10 tối (A): Phase 2 xong, đã kiểm: `veth-host` 172.24.4.1/24 UP, `cj-nat.service` active (MASQUERADE 172.24.4.0/24), `vgs` có `cinder-volumes` 50G, đĩa Swift có partition `KOLLA_SWIFT_DATA` + XFS label `d0`, controller SSH được sang cả 3 IP bằng key riêng (`cj@os-controller`, đã thêm vào metadata project). Tailscale controller vào tailnet (hostname `cj-controller`, `100.98.68.95`), đang quảng bá 10.10.0.0/24 và 172.24.4.0/24 (**chờ duyệt route ở admin console**). Script: `infra/host/`. Đã tắt cụm sau khi xong.
+- 28/10 tối (A): thêm cơ chế khóa dùng cụm để tránh bị tắt giữa chừng: `infra/gcp/cj-lock.sh acquire|release|status|check` (khóa lưu ở metadata project, tự hết hạn sau 4 giờ, lý do tự bỏ dấu). `gcp-down.sh` từ chối tắt nếu người KHÁC đang giữ khóa (đặt `CJ_ME=A|B|C`; `FORCE=1` để tắt cưỡng bức sau khi đã hỏi nhóm). **Đề xuất sửa CONTRACT mục 3.2** (cần cả 3 đồng ý): bắt buộc giữ khóa khi làm việc và chỉ tắt cụm bằng `gcp-down.sh`, không chạy `gcloud compute instances stop` trực tiếp.
