@@ -8,7 +8,7 @@
 
 ## 0. Cách dùng file này
 
-- File này là **nguồn sự thật duy nhất** khi triển khai. Mỗi phiên làm việc: đọc mục **17. Trạng thái** để biết đang ở đâu, làm tiếp phase kế tiếp, xong thì tích `[x]` và ghi chú (IP, ID, lỗi gặp phải) vào mục đó.
+- File này là **kế hoạch kỹ thuật chung**. Nhóm chia 3 mảng A/B/C chạy song song: phân công, quyền sở hữu file và giao diện giữa các mảng nằm ở `docs/CONTRACT.md`; việc và tiến độ từng người nằm ở `docs/tasks/<vai-trò>.md` (cập nhật tiến độ ở đó, không sửa mục 17 của file này).
 - Mọi thao tác hạ tầng GCP làm bằng **gcloud CLI** từ laptop Windows (Git Bash). Mọi thao tác OpenStack làm qua **SSH vào `os-controller`**.
 - Quy ước cho Claude ở phiên sau:
   - Chạy `gcloud` qua Bash tool (Git Bash). Lệnh tương tác (`gcloud auth login`) thì nhờ người dùng tự gõ bằng `! gcloud auth login` trong ô chat.
@@ -103,7 +103,7 @@ Router `cj-router`: gateway là ext-net (SNAT), có interface vào cả 3 subnet
 |---|---|
 | sg-bastion | 22/tcp từ 172.24.4.1/32 (cứu hộ từ controller) |
 | sg-web | 8000/tcp từ 10.0.1.0/24 (amphora, đi qua router); 22 từ sg-bastion; 8000 + 9100 từ sg-monitor |
-| sg-worker | 22 từ sg-bastion; 9100 từ sg-monitor |
+| sg-worker | 22 từ sg-bastion; 9100 + 9200 (metrics worker) từ sg-monitor |
 | sg-mq | 5672 từ sg-web và sg-worker; 15692 từ sg-monitor; 22 từ sg-bastion |
 | sg-db | 3306 từ sg-web, sg-worker, sg-db (replication); 9104 + 9100 từ sg-monitor; 22 từ sg-bastion |
 | sg-monitor | 3000, 9090, 9093 từ sg-bastion (Tailscale); 22 từ sg-bastion |
@@ -192,7 +192,9 @@ cloudjudge/
 ├─ scripts/                # deploy-stacks.sh, release.sh, loadtest.py, demo-checks.sh, cj-health.sh, backup-mysql.sh
 └─ docs/                   # report/, evidence/ (ảnh minh chứng), cost.xlsx, architecture.png
 ```
-Trên controller, file bí mật nằm ở `~/secrets/secrets.env` (chmod 600), **không** nằm trong repo. Một bản sao giữ trong trình quản lý mật khẩu của nhóm.
+Trên controller, secret nằm ở `~/secrets/infra.env` (A), `app.env` (B), `data.env` (C), chmod 640 group `cj`, **không** nằm trong repo (xem `docs/CONTRACT.md` mục 10). Một bản sao giữ trong trình quản lý mật khẩu của nhóm.
+
+> **Cập nhật 28/10:** repo gốc chính là thư mục dự án này. Thêm `db/` (C), `docs/CONTRACT.md`, `docs/tasks/`. Mỗi stack có script deploy riêng `heat/deploy-<stack>.sh` thay cho `scripts/deploy-stacks.sh`; `backup-mysql.sh` nằm trong `db/`. Chủ sở hữu từng đường dẫn: CONTRACT mục 1.
 
 ---
 
@@ -571,17 +573,17 @@ openstack quota set --instances 20 --cores 30 --ram 40960 --volumes 10 --gigabyt
 Mỗi thành viên nhóm có 1 user riêng, role `admin` trên `cloudjudge`, dùng khi chạy Heat.
 
 ### 8.6. Application credential (`40-appcreds.sh`)
-Đăng nhập **bằng chính user đó** rồi tạo; kết quả ghi vào `~/secrets/secrets.env`:
+Đăng nhập **bằng chính user đó** rồi tạo; kết quả ghi vào `~/secrets/infra.env`:
 ```bash
 for u in cj-web cj-worker cj-monitor cj-backup; do
   OUT=$(openstack --os-username $u --os-password "$(cat ~/secrets/pw-$u)" --os-project-name cloudjudge \
         --os-user-domain-name Default --os-project-domain-name Default \
         application credential create ${u}-ac -f json)
   V=$(echo ${u^^} | tr - _)
-  echo "${V}_AC_ID=$(echo $OUT | jq -r .id)"     >> ~/secrets/secrets.env
-  echo "${V}_AC_SECRET=$(echo $OUT | jq -r .secret)" >> ~/secrets/secrets.env
+  echo "${V}_AC_ID=$(echo $OUT | jq -r .id)"     >> ~/secrets/infra.env
+  echo "${V}_AC_SECRET=$(echo $OUT | jq -r .secret)" >> ~/secrets/infra.env
 done
-chmod 600 ~/secrets/secrets.env
+chgrp cj ~/secrets/infra.env && chmod 640 ~/secrets/infra.env   # group cj: cả 3 user Linux đọc được
 ```
 
 ### 8.7. Swift container và ACL (`50-swift-acl.sh`, chạy với scope admin@cloudjudge)
@@ -711,7 +713,7 @@ Gunicorn: `-w 3 -b 0.0.0.0:8000`. Footer trang hiển thị **hostname + AZ** (�
 
 ## 11. Phase 7 – Heat stacks (≈ 1,5 ngày) — A: cj-net · C: cj-data, cj-mon · B: cj-app
 
-Thứ tự: **cj-net → cj-data → cj-app → cj-mon**. Mỗi stack nhận ID từ output của stack trước, qua `scripts/deploy-stacks.sh`. Secret lấy từ `~/secrets/secrets.env` và truyền bằng `--parameter` (tham số `hidden: true`).
+Thứ tự: **cj-net → cj-data → cj-app → cj-mon**. Mỗi stack nhận ID từ output của stack trước, qua script `heat/deploy-<stack>.sh` của từng chủ stack. Secret lấy từ `~/secrets/{infra,app,data}.env` và truyền bằng `--parameter` (tham số `hidden: true`).
 
 ### 11.1. `cj-net.yaml` (A)
 - `OS::Neutron::Net` + `Subnet` ×3 (theo 3.2, `dns_nameservers: [8.8.8.8]`, có `allocation_pools`).
@@ -1050,6 +1052,8 @@ Chỉ giữ 2 bộ snapshot gần nhất (`gcloud compute snapshots delete ...` 
 ---
 
 ## 17. Trạng thái (cập nhật sau mỗi phiên)
+
+> ⚠️ **Đã chuyển:** từ 28/10 tiến độ ghi trong `docs/tasks/A-ha-tang.md`, `B-ung-dung.md`, `C-du-lieu-giam-sat.md`; giá trị thật của cụm (PROJECT_ID, CTL_IP…) ghi ở mục "Thông tin cụm" trong file của A. Phần dưới chỉ giữ để tham khảo.
 
 **Giá trị thật:**
 - PROJECT_ID: `…`

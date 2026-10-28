@@ -1,0 +1,27 @@
+# Secret – không bao giờ commit
+secrets/
+*.env
+!*.env.example
+clouds.yaml
+passwords.yml
+*.pem
+*.key
+id_*
+*-ssh-keys.txt
+*openrc*.sh
+
+# Ảnh máy ảo, file tải về
+*.qcow2
+*.img
+*.tar.gz
+
+# Python / editor
+__pycache__/
+*.pyc
+.venv/
+venv/
+.vscode/
+.idea/
+
+# Office tạm
+~$*
