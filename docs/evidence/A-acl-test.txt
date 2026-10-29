@@ -1,0 +1,18 @@
+== cj-web (role member): ghi được vào submissions/testcases
+web   upload  submissions/acl-test.txt                                   -> OK (đúng)
+web   upload  testcases/acl-test.txt                                     -> OK (đúng)
+== cj-worker (role reader + ACL): chỉ ĐỌC; xóa/ghi bị 403
+worker list   submissions                                                -> OK (đúng)
+worker download submissions/acl-test.txt                                 -> OK (đúng)
+worker DELETE submissions/acl-test.txt                                   -> 403 (đúng)
+worker upload submissions/evil.txt                                       -> 403 (đúng)
+worker upload backups/evil.txt (không có ACL)                          -> 403 (đúng)
+== cj-backup: chỉ đọc releases, đọc/ghi backups; không đụng submissions
+backup upload backups/acl-test.txt                                       -> OK (đúng)
+backup list   releases                                                   -> OK (đúng)
+backup DELETE submissions/acl-test.txt                                   -> 403 (đúng)
+== cj-monitor (reader, không ACL nào): không đọc được dữ liệu
+monitor list  submissions                                                -> 403 (đúng)
+== dọn bằng cj-web / cj-backup
+
+ACL_TEST_PASS

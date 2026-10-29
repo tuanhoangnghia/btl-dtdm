@@ -1,0 +1,17 @@
+== Chuẩn bị mạng
+== Tạo LB (provider amphora, topology ACTIVE_STANDBY theo octavia.conf)
+ACTIVE
+LB provisioning_status=ACTIVE sau 440s                           OK
+-- topology: None | vip: 10.98.0.23
+-- amphora:
+16739e29-048e-4e9d-be5e-35ed2fd40ccc ALLOCATED BACKUP 10.1.0.105
+6a88dead-5ddd-4b5d-b580-0b9d7c3e129b ALLOCATED MASTER 10.1.0.212
+2 amphora: MASTER + BACKUP (ACTIVE_STANDBY)                      OK
+-- amphora nằm ở host nào (server list project service):
+amphora-16739e29-048e-4e9d-be5e-35ed2fd40ccc os-compute-1
+amphora-6a88dead-5ddd-4b5d-b580-0b9d7c3e129b os-compute-2
+2 amphora nằm ở 2 host khác nhau (anti-affinity)            OK
+
+SMOKE_LB_PASS
+(KEEP=1: không dọn)
+LB_EXIT=0

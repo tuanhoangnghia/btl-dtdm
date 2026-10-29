@@ -1,0 +1,115 @@
+
+######## HM1 - Mạng riêng: 3 network, 1 router (SNAT), subnet công khai/riêng tư
++-------------+--------------------------------------+
+| Name        | Subnets                              |
++-------------+--------------------------------------+
+| lb-mgmt-net | 673a6470-a012-4ec8-b47d-9a32812c910f |
+| net-app     | 98c4ffca-707d-460a-be3d-acae80d0bbff |
+| net-public  | 2fa9c8e2-8c2e-4dd5-b9e4-81fa0849ae65 |
+| net-data    | e7dc2f89-4355-4edb-aa58-cd302f194aa8 |
+| ext-net     | f9fdd1a9-9de0-400a-9daa-5d06ebeaeaf5 |
++-------------+--------------------------------------+
++----------------+---------------+
+| Name           | Subnet        |
++----------------+---------------+
+| subnet-public  | 10.0.1.0/24   |
+| lb-mgmt-subnet | 10.1.0.0/24   |
+| subnet-app     | 10.0.2.0/24   |
+| subnet-data    | 10.0.3.0/24   |
+| ext-subnet     | 172.24.4.0/24 |
++----------------+---------------+
+external_gateway_info:
+  enable_snat: true
+  external_fixed_ips:
+  - ip_address: 172.24.4.125
+    subnet_id: f9fdd1a9-9de0-400a-9daa-5d06ebeaeaf5
+  network_id: <ext-net>
+name: cj-router
+status: ACTIVE
+
+######## HM1 - Hai Availability Zone: máy ảo nằm ở cả az1 và az2
++-----------+-------------+
+| Zone Name | Zone Status |
++-----------+-------------+
+| az1       | available   |
+| az2       | available   |
+| internal  | available   |
++-----------+-------------+
++------------+--------+------------------------------------+-------------------+
+| Name       | Status | Networks                           | Availability Zone |
++------------+--------+------------------------------------+-------------------+
+| cj-bastion | ACTIVE | net-public=10.0.1.90, 172.24.4.131 | az1               |
++------------+--------+------------------------------------+-------------------+
+
+######## HM2 - Chỉ net-public có floating IP; web/worker/mysql/rabbitmq KHÔNG có
++---------------------+------------------+--------------------------------------+
+| Floating IP Address | Fixed IP Address | Port                                 |
++---------------------+------------------+--------------------------------------+
+| 172.24.4.131        | 10.0.1.90        | 829d620b-fac1-4f39-b4e3-67ea01cbf74a |
++---------------------+------------------+--------------------------------------+
+
+######## HM2 - Security group: web chỉ nhận 8000 từ dải amphora (10.0.1.0/24); DB chỉ nhận từ web/worker/replica
+--- sg-bastion (ingress)
+  tcp   22:22        <- 172.24.4.1/32
+--- sg-web (ingress)
+  tcp   8000:8000    <- sg-monitor
+  tcp   22:22        <- sg-bastion
+  tcp   9100:9100    <- sg-monitor
+  tcp   8000:8000    <- 10.0.1.0/24
+--- sg-worker (ingress)
+  tcp   9200:9200    <- sg-monitor
+  tcp   9100:9100    <- sg-monitor
+  tcp   22:22        <- sg-bastion
+--- sg-db (ingress)
+  tcp   22:22        <- sg-bastion
+  tcp   3306:3306    <- sg-worker
+  tcp   3306:3306    <- sg-web
+  tcp   3306:3306    <- sg-db
+  tcp   9104:9104    <- sg-monitor
+  tcp   9100:9100    <- sg-monitor
+--- sg-mq (ingress)
+  tcp   5672:5672    <- sg-worker
+  tcp   15692:15692  <- sg-monitor
+  tcp   22:22        <- sg-bastion
+  tcp   5672:5672    <- sg-web
+  tcp   9100:9100    <- sg-monitor
+--- sg-monitor (ingress)
+  tcp   3000:3000    <- sg-bastion
+  tcp   22:22        <- sg-bastion
+  tcp   9090:9090    <- sg-bastion
+  tcp   9093:9093    <- sg-bastion
+
+######## HM2 - Từ máy chấm (net-app) gọi thẳng web:8000 phải BỊ CHẶN (timeout); qua LB thì được
+Chạy tay khi đã có stack cj-app (qua bastion):
+  ssh -J cj@<bastion> ubuntu@<ip-worker> "curl -m 5 http://<ip-web>:8000/healthz"   # mong đợi: timeout
+  curl -m 5 http://<CTL_IP>/healthz                                                 # mong đợi: 200 + hostname
+
+######## HM5 - Mỗi danh tính 1 application credential (không dùng mật khẩu thật trong ứng dụng)
+User dịch vụ và role trong project cloudjudge:
+member cj-web
+reader cj-backup
+reader cj-monitor
+reader cj-worker
+
+######## HM5 - Test phân quyền Swift: worker xóa/ghi object bị 403
+== cj-web (role member): ghi được vào submissions/testcases
+web   upload  submissions/acl-test.txt                                   -> OK (đúng)
+web   upload  testcases/acl-test.txt                                     -> OK (đúng)
+== cj-worker (role reader + ACL): chỉ ĐỌC; xóa/ghi bị 403
+worker list   submissions                                                -> OK (đúng)
+worker download submissions/acl-test.txt                                 -> OK (đúng)
+worker DELETE submissions/acl-test.txt                                   -> 403 (đúng)
+worker upload submissions/evil.txt                                       -> 403 (đúng)
+worker upload backups/evil.txt (không có ACL)                          -> 403 (đúng)
+== cj-backup: chỉ đọc releases, đọc/ghi backups; không đụng submissions
+backup upload backups/acl-test.txt                                       -> OK (đúng)
+backup list   releases                                                   -> OK (đúng)
+backup DELETE submissions/acl-test.txt                                   -> 403 (đúng)
+== cj-monitor (reader, không ACL nào): không đọc được dữ liệu
+monitor list  submissions                                                -> 403 (đúng)
+== dọn bằng cj-web / cj-backup
+
+ACL_TEST_PASS
+
+######## HM5 - Không có khóa trong Git
+(thư mục /home/cj/cloudjudge không phải repo git; chạy phần này trên laptop: git grep ... / gitleaks detect)

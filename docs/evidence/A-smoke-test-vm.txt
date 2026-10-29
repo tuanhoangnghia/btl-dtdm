@@ -1,0 +1,19 @@
+== Chuẩn bị mạng, router, keypair, SG
+== 1) Tạo VM ở az1 và az2 (đo thời gian boot)
+VM az1 ACTIVE trong 18s (yêu cầu < 90s)                     OK
+VM az2 ACTIVE trong 18s (yêu cầu < 90s)                     OK
+smoke-az2 ACTIVE az2 os-compute-2.asia-southeast1-b.c.omega-dahlia-468315-f6.internal
+smoke-az1 ACTIVE az1 os-compute-1.asia-southeast1-a.c.omega-dahlia-468315-f6.internal
+== Floating IP và SSH vào VM
+SSH vào VM az1 qua floating IP 172.24.4.182                   OK
+SSH vào VM az2 qua floating IP 172.24.4.47                    OK
+== 2) Từ trong VM az1: Internet, Keystone, Swift, MTU
+ping 8.8.8.8 (SNAT qua router + MASQUERADE trên controller)   OK
+phân giải DNS + HTTP ra Internet (archive.ubuntu.com)       OK
+gọi Keystone http://10.10.0.10:5000/v3                       OK
+gọi Swift http://10.10.0.10:8080/healthcheck                 OK
+MTU tenant = 1450 (GCE 1500 trừ overhead overlay)            OK
+ping chéo AZ az1->az2 (10.99.0.81) gói 1400B                 OK
+
+SMOKE_TEST_PASS
+== Dọn

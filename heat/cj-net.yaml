@@ -1,0 +1,235 @@
+heat_template_version: 2021-04-16
+description: >
+  CloudJudge lớp mạng (A): 3 network (public/app/data) nối 1 router có SNAT, 6 security group theo
+  docs/CONTRACT.md + KE_HOACH 3.3, bastion + floating IP (Tailscale subnet router). Output đúng tên CONTRACT mục 5.
+
+parameters:
+  ext_net:
+    type: string
+    default: ext-net
+  image:
+    type: string
+    default: ubuntu-24.04
+  bastion_flavor:
+    type: string
+    default: cj.tiny
+  dns:
+    type: comma_delimited_list
+    default: "8.8.8.8"
+  admin_ssh_pubkeys_b64:
+    type: string
+    description: base64 của file chứa các SSH public key quản trị (mỗi dòng 1 key), cho user cj trên bastion
+  ts_authkey:
+    type: string
+    hidden: true
+    default: ""
+    description: Tailscale auth key cho bastion (rỗng = không cài Tailscale)
+
+resources:
+  # ---------- Mạng ----------
+  net_public:
+    type: OS::Neutron::Net
+    properties: {name: net-public}
+  subnet_public:
+    type: OS::Neutron::Subnet
+    properties:
+      name: subnet-public
+      network: {get_resource: net_public}
+      cidr: 10.0.1.0/24
+      dns_nameservers: {get_param: dns}
+      allocation_pools: [{start: 10.0.1.50, end: 10.0.1.200}]
+
+  net_app:
+    type: OS::Neutron::Net
+    properties: {name: net-app}
+  subnet_app:
+    type: OS::Neutron::Subnet
+    properties:
+      name: subnet-app
+      network: {get_resource: net_app}
+      cidr: 10.0.2.0/24
+      dns_nameservers: {get_param: dns}
+      allocation_pools: [{start: 10.0.2.50, end: 10.0.2.200}]
+
+  net_data:
+    type: OS::Neutron::Net
+    properties: {name: net-data}
+  subnet_data:
+    type: OS::Neutron::Subnet
+    properties:
+      name: subnet-data
+      network: {get_resource: net_data}
+      cidr: 10.0.3.0/24
+      dns_nameservers: {get_param: dns}
+      allocation_pools: [{start: 10.0.3.50, end: 10.0.3.200}]
+
+  router:
+    type: OS::Neutron::Router
+    properties:
+      name: cj-router
+      external_gateway_info: {network: {get_param: ext_net}}   # SNAT mặc định bật
+  router_if_public:
+    type: OS::Neutron::RouterInterface
+    properties: {router: {get_resource: router}, subnet: {get_resource: subnet_public}}
+  router_if_app:
+    type: OS::Neutron::RouterInterface
+    properties: {router: {get_resource: router}, subnet: {get_resource: subnet_app}}
+  router_if_data:
+    type: OS::Neutron::RouterInterface
+    properties: {router: {get_resource: router}, subnet: {get_resource: subnet_data}}
+
+  # ---------- Security group (nhóm trống, rule tách riêng để tham chiếu chéo không bị vòng) ----------
+  sg_bastion: {type: OS::Neutron::SecurityGroup, properties: {name: sg-bastion}}
+  sg_web:     {type: OS::Neutron::SecurityGroup, properties: {name: sg-web}}
+  sg_worker:  {type: OS::Neutron::SecurityGroup, properties: {name: sg-worker}}
+  sg_mq:      {type: OS::Neutron::SecurityGroup, properties: {name: sg-mq}}
+  sg_db:      {type: OS::Neutron::SecurityGroup, properties: {name: sg-db}}
+  sg_monitor: {type: OS::Neutron::SecurityGroup, properties: {name: sg-monitor}}
+
+  # bastion: SSH chỉ từ 172.24.4.1 (controller, cứu hộ); truy cập thường ngày qua Tailscale
+  r_bastion_ssh:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_bastion}, protocol: tcp, port_range_min: 22, port_range_max: 22, remote_ip_prefix: 172.24.4.1/32}
+
+  # web: 8000 chỉ từ amphora (10.0.1.0/24); amphora đi tới web QUA ROUTER nên worker (10.0.2.x) gọi thẳng web bị chặn
+  r_web_lb:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_web}, protocol: tcp, port_range_min: 8000, port_range_max: 8000, remote_ip_prefix: 10.0.1.0/24}
+  r_web_ssh:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_web}, protocol: tcp, port_range_min: 22, port_range_max: 22, remote_group: {get_resource: sg_bastion}}
+  r_web_mon8000:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_web}, protocol: tcp, port_range_min: 8000, port_range_max: 8000, remote_group: {get_resource: sg_monitor}}
+  r_web_mon9100:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_web}, protocol: tcp, port_range_min: 9100, port_range_max: 9100, remote_group: {get_resource: sg_monitor}}
+
+  # worker
+  r_worker_ssh:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_worker}, protocol: tcp, port_range_min: 22, port_range_max: 22, remote_group: {get_resource: sg_bastion}}
+  r_worker_mon9100:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_worker}, protocol: tcp, port_range_min: 9100, port_range_max: 9100, remote_group: {get_resource: sg_monitor}}
+  r_worker_mon9200:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_worker}, protocol: tcp, port_range_min: 9200, port_range_max: 9200, remote_group: {get_resource: sg_monitor}}
+
+  # rabbitmq
+  r_mq_web:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_mq}, protocol: tcp, port_range_min: 5672, port_range_max: 5672, remote_group: {get_resource: sg_web}}
+  r_mq_worker:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_mq}, protocol: tcp, port_range_min: 5672, port_range_max: 5672, remote_group: {get_resource: sg_worker}}
+  r_mq_prom:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_mq}, protocol: tcp, port_range_min: 15692, port_range_max: 15692, remote_group: {get_resource: sg_monitor}}
+  r_mq_9100:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_mq}, protocol: tcp, port_range_min: 9100, port_range_max: 9100, remote_group: {get_resource: sg_monitor}}
+  r_mq_ssh:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_mq}, protocol: tcp, port_range_min: 22, port_range_max: 22, remote_group: {get_resource: sg_bastion}}
+
+  # mysql
+  r_db_web:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_db}, protocol: tcp, port_range_min: 3306, port_range_max: 3306, remote_group: {get_resource: sg_web}}
+  r_db_worker:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_db}, protocol: tcp, port_range_min: 3306, port_range_max: 3306, remote_group: {get_resource: sg_worker}}
+  r_db_repl:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_db}, protocol: tcp, port_range_min: 3306, port_range_max: 3306, remote_group: {get_resource: sg_db}}
+  r_db_exporter:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_db}, protocol: tcp, port_range_min: 9104, port_range_max: 9104, remote_group: {get_resource: sg_monitor}}
+  r_db_9100:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_db}, protocol: tcp, port_range_min: 9100, port_range_max: 9100, remote_group: {get_resource: sg_monitor}}
+  r_db_ssh:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_db}, protocol: tcp, port_range_min: 22, port_range_max: 22, remote_group: {get_resource: sg_bastion}}
+
+  # monitor: Grafana/Prometheus/Alertmanager chỉ từ bastion (qua Tailscale)
+  r_mon_grafana:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_monitor}, protocol: tcp, port_range_min: 3000, port_range_max: 3000, remote_group: {get_resource: sg_bastion}}
+  r_mon_prom:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_monitor}, protocol: tcp, port_range_min: 9090, port_range_max: 9090, remote_group: {get_resource: sg_bastion}}
+  r_mon_alert:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_monitor}, protocol: tcp, port_range_min: 9093, port_range_max: 9093, remote_group: {get_resource: sg_bastion}}
+  r_mon_ssh:
+    type: OS::Neutron::SecurityGroupRule
+    properties: {security_group: {get_resource: sg_monitor}, protocol: tcp, port_range_min: 22, port_range_max: 22, remote_group: {get_resource: sg_bastion}}
+
+  # ---------- Bastion ----------
+  bastion_port:
+    type: OS::Neutron::Port
+    properties:
+      network: {get_resource: net_public}
+      fixed_ips: [{subnet: {get_resource: subnet_public}}]
+      security_groups: [{get_resource: sg_bastion}]
+  bastion:
+    type: OS::Nova::Server
+    depends_on: [router_if_public]
+    properties:
+      name: cj-bastion
+      image: {get_param: image}
+      flavor: {get_param: bastion_flavor}
+      availability_zone: az1
+      networks: [{port: {get_resource: bastion_port}}]
+      metadata: {cj_role: bastion}
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            __KEYS_B64__: {get_param: admin_ssh_pubkeys_b64}
+            __TS_KEY__: {get_param: ts_authkey}
+          template: |
+            #cloud-config
+            users:
+              - name: cj
+                shell: /bin/bash
+                sudo: ALL=(ALL) NOPASSWD:ALL
+            write_files:
+              - path: /etc/sysctl.d/99-cj-forward.conf
+                content: |
+                  net.ipv4.ip_forward=1
+            runcmd:
+              - sysctl --system
+              - install -d -m 700 -o cj -g cj /home/cj/.ssh
+              - echo '__KEYS_B64__' | base64 -d > /home/cj/.ssh/authorized_keys
+              - chown cj:cj /home/cj/.ssh/authorized_keys
+              - chmod 600 /home/cj/.ssh/authorized_keys
+              - curl -fsSL https://tailscale.com/install.sh | sh
+              - |
+                if [ -n '__TS_KEY__' ]; then
+                  tailscale up --authkey='__TS_KEY__' --hostname=cj-bastion --advertise-routes=10.0.2.0/24,10.0.3.0/24 --accept-routes=false
+                fi
+  bastion_fip:
+    type: OS::Neutron::FloatingIP
+    depends_on: [router_if_public]
+    properties:
+      floating_network: {get_param: ext_net}
+      port_id: {get_resource: bastion_port}
+
+outputs:
+  net_public_id:    {value: {get_resource: net_public}}
+  subnet_public_id: {value: {get_resource: subnet_public}}
+  net_app_id:       {value: {get_resource: net_app}}
+  subnet_app_id:    {value: {get_resource: subnet_app}}
+  net_data_id:      {value: {get_resource: net_data}}
+  subnet_data_id:   {value: {get_resource: subnet_data}}
+  sg_bastion_id:    {value: {get_resource: sg_bastion}}
+  sg_web_id:        {value: {get_resource: sg_web}}
+  sg_worker_id:     {value: {get_resource: sg_worker}}
+  sg_mq_id:         {value: {get_resource: sg_mq}}
+  sg_db_id:         {value: {get_resource: sg_db}}
+  sg_monitor_id:    {value: {get_resource: sg_monitor}}
+  router_id:        {value: {get_resource: router}}
+  bastion_fip:      {value: {get_attr: [bastion_fip, floating_ip_address]}}
