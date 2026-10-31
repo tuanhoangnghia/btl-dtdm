@@ -9,10 +9,10 @@ parameters:
   web_flavor:     {type: string, default: cj.small}
   worker_flavor:  {type: string, default: cj.medium}
   ext_net:        {type: string, default: ext-net}
-  public_subnet:  {type: string, description: subnet-public (VIP của LB), output subnet_public_id của cj-net}
-  app_net:        {type: string, description: net-app, output net_app_id của cj-net}
-  sg_web:         {type: string, description: output sg_web_id của cj-net}
-  sg_worker:      {type: string, description: output sg_worker_id của cj-net}
+  public_subnet:  {type: string, description: "subnet-public (VIP của LB): output subnet_public_id của cj-net"}
+  app_net:        {type: string, description: "net-app: output net_app_id của cj-net"}
+  sg_web:         {type: string, description: "output sg_web_id của cj-net"}
+  sg_worker:      {type: string, description: "output sg_worker_id của cj-net"}
   release_version: {type: string, default: 0.1.0, description: "releases/cloudjudge-<ver>.tar.gz trên Swift"}
   web_min:        {type: number, default: 2}
   web_max:        {type: number, default: 3}
@@ -21,7 +21,7 @@ parameters:
   db_primary_host: {type: string, default: 10.0.3.10}
   db_replica_host: {type: string, default: 10.0.3.11}
   mq_host:        {type: string, default: 10.0.2.10}
-  admin_ssh_pubkeys_b64: {type: string, description: base64 các SSH public key quản trị (user cj)}
+  admin_ssh_pubkeys_b64: {type: string, description: "base64 các SSH public key quản trị (user cj)"}
   db_password:    {type: string, hidden: true}
   db_ro_password: {type: string, hidden: true}
   mq_password:    {type: string, hidden: true}
@@ -60,7 +60,6 @@ resources:
       delay: 5
       timeout: 3
       max_retries: 2
-      max_retries_down: 2
   lb_fip:
     type: OS::Neutron::FloatingIP
     properties: {floating_network: {get_param: ext_net}, port_id: {get_attr: [lb, vip_port_id]}}
@@ -143,9 +142,9 @@ outputs:
     value: {get_attr: [lb_fip, floating_ip_address]}
   lb_vip:
     value: {get_attr: [lb, vip_address]}
-  web_up_url:      {description: alarm_url (bí mật), value: {get_attr: [web_up, alarm_url]}}
-  web_down_url:    {description: alarm_url (bí mật), value: {get_attr: [web_down, alarm_url]}}
-  worker_up_url:   {description: alarm_url (bí mật), value: {get_attr: [worker_up, alarm_url]}}
-  worker_down_url: {description: alarm_url (bí mật), value: {get_attr: [worker_down, alarm_url]}}
+  web_up_url:      {description: "alarm_url (bí mật)", value: {get_attr: [web_up, alarm_url]}}
+  web_down_url:    {description: "alarm_url (bí mật)", value: {get_attr: [web_down, alarm_url]}}
+  worker_up_url:   {description: "alarm_url (bí mật)", value: {get_attr: [worker_up, alarm_url]}}
+  worker_down_url: {description: "alarm_url (bí mật)", value: {get_attr: [worker_down, alarm_url]}}
   web_count:    {value: {get_attr: [web_asg, current_size]}}
   worker_count: {value: {get_attr: [worker_asg, current_size]}}
