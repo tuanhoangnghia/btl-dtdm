@@ -41,12 +41,14 @@ while :; do
     echo "VM $BUILDER được giữ lại để xem log: openstack console log show $BUILDER"; exit 1
   fi
   [ "$ST" = SHUTOFF ] && break
+  [ -n "$LOG" ] && LAST_LOG=$LOG
   [ "$ST" = ERROR ] && { openstack server show "$BUILDER" -c fault; exit 1; }
   if (( $(date +%s) - START > 2700 )); then echo "quá 45 phút chưa xong"; echo "$LOG"; exit 1; fi
   printf '\r%s  %ss  ' "$ST" $(( $(date +%s) - START )); sleep 20
 done
 echo; echo "builder SHUTOFF sau $(( $(date +%s) - START ))s"
-openstack console log show "$BUILDER" | grep -q CJ_BUILD_OK || echo "CẢNH BÁO: không thấy CJ_BUILD_OK trong console log"
+# máy đã SHUTOFF thì không đọc console được nữa: xét log đọc được lần cuối lúc máy còn chạy
+grep -q CJ_BUILD_OK <<<"${LAST_LOG:-}" || echo "CẢNH BÁO: không thấy CJ_BUILD_OK trong console log (máy chỉ tự tắt khi mọi bước thành công)"
 
 openstack server image create --name "$NAME" --wait "$BUILDER" -f value -c id
 openstack image set --property cj_built_at="$(date -u +%FT%TZ)" --property os_distro=ubuntu --property os_version=24.04 "$NAME"
