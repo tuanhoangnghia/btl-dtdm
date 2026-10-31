@@ -1,0 +1,14 @@
+# Minh chứng hạng mục 2 (31/10/2026): máy chấm (net-app 10.0.2.96) KHÔNG gọi thẳng được web:8000; dải public 10.0.1.0/24 (amphora/bastion) thì được.
+# sg-web chỉ nhận 8000 từ 10.0.1.0/24; amphora đi tới web qua router nên 10.0.2.x bị chặn.
+
+## Từ worker cj-worker-bdcbe0f8 (10.0.2.96, net-app) -> web cj-web-f00764a4 (10.0.2.166:8000)
+$ curl -m 5 http://10.0.2.166:8000/healthz
+http_code=000  curl rc=28   (hết thời gian chờ = bị security group chặn)
+
+## Từ bastion cj-bastion (10.0.1.90, net-public) -> cùng web
+$ curl -m 6 http://10.0.2.166:8000/healthz
+{"az":"az1","error":"OperationalError","host":"cj-web-f00764a4","status":"db_error"}  [503]
+(web trả lời được; 503 là do chưa có CSDL cj-data, không liên quan mạng)
+
+## Alarm URL của Heat (sau khi thêm [ec2authtoken] vào /etc/kolla/config/heat.conf)
+$ curl -X POST "$WORKER_UP_URL"   -> 200;  heat-api-cfn.log: "AWS authentication successful."
