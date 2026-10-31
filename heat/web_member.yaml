@@ -1,0 +1,109 @@
+heat_template_version: 2021-04-16
+description: >
+  Một máy web của ASG (CJ::WebMember): port trên net-app (sg-web), server cj-base-v1 (cj_role=web),
+  pool member Octavia cổng 8000. Pool member KHÔNG khai báo subnet: amphora đi tới web qua router từ 10.0.1.x
+  nên sg-web chỉ mở 8000 cho 10.0.1.0/24 (KE_HOACH 3.3).
+
+parameters:
+  image: {type: string}
+  flavor: {type: string}
+  network: {type: string}
+  security_group: {type: string}
+  server_group: {type: string}
+  pool_id: {type: string}
+  release_version: {type: string}
+  db_primary_host: {type: string}
+  db_replica_host: {type: string}
+  mq_host: {type: string}
+  admin_ssh_pubkeys_b64: {type: string}
+  db_password: {type: string, hidden: true}
+  db_ro_password: {type: string, hidden: true}
+  mq_password: {type: string, hidden: true}
+  secret_key: {type: string, hidden: true}
+  ac_id: {type: string, hidden: true}
+  ac_secret: {type: string, hidden: true}
+
+resources:
+  port:
+    type: OS::Neutron::Port
+    properties:
+      network: {get_param: network}
+      security_groups: [{get_param: security_group}]
+
+  server:
+    type: OS::Nova::Server
+    properties:
+      # tên ngắn, dễ đọc khi demo: cj-web-<8 ký tự đầu của id stack con>
+      name: {list_join: ["-", ["cj-web", {str_split: ["-", {get_param: "OS::stack_id"}, 0]}]]}
+      image: {get_param: image}
+      flavor: {get_param: flavor}
+      networks: [{port: {get_resource: port}}]
+      scheduler_hints: {group: {get_param: server_group}}
+      metadata: {cj_role: web}
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            __VER__: {get_param: release_version}
+            __DB_PRIMARY__: {get_param: db_primary_host}
+            __DB_REPLICA__: {get_param: db_replica_host}
+            __MQ_HOST__: {get_param: mq_host}
+            __KEYS_B64__: {get_param: admin_ssh_pubkeys_b64}
+            __DB_PASSWORD__: {get_param: db_password}
+            __DB_RO_PASSWORD__: {get_param: db_ro_password}
+            __MQ_PASSWORD__: {get_param: mq_password}
+            __SECRET_KEY__: {get_param: secret_key}
+            __AC_ID__: {get_param: ac_id}
+            __AC_SECRET__: {get_param: ac_secret}
+          template: |
+            #cloud-config
+            users:
+              - name: cj
+                shell: /bin/bash
+                sudo: ALL=(ALL) NOPASSWD:ALL
+            write_files:
+              - path: /etc/cloudjudge/cloudjudge.env
+                owner: root:root
+                permissions: '0600'
+                content: |
+                  CJ_ROLE=web
+                  CJ_RELEASE=__VER__
+                  DB_PRIMARY_HOST=__DB_PRIMARY__
+                  DB_REPLICA_HOST=__DB_REPLICA__
+                  DB_PORT=3306
+                  DB_NAME=cloudjudge
+                  DB_USER=cj_app
+                  DB_PASSWORD=__DB_PASSWORD__
+                  DB_RO_USER=cj_ro
+                  DB_RO_PASSWORD=__DB_RO_PASSWORD__
+                  MQ_HOST=__MQ_HOST__
+                  MQ_PORT=5672
+                  MQ_USER=cj
+                  MQ_PASSWORD=__MQ_PASSWORD__
+                  MQ_QUEUE=submissions
+                  STORAGE_AUTH=appcred
+                  OS_AUTH_URL=http://10.10.0.10:5000/v3
+                  OS_REGION_NAME=RegionOne
+                  OS_AC_ID=__AC_ID__
+                  OS_AC_SECRET=__AC_SECRET__
+                  SWIFT_SUBMISSIONS=submissions
+                  SWIFT_TESTCASES=testcases
+                  SECRET_KEY=__SECRET_KEY__
+            runcmd:
+              - install -d -m 700 -o cj -g cj /home/cj/.ssh
+              - echo '__KEYS_B64__' | base64 -d > /home/cj/.ssh/authorized_keys
+              - chown cj:cj /home/cj/.ssh/authorized_keys
+              - chmod 600 /home/cj/.ssh/authorized_keys
+              - /opt/cj/fetch-release.sh '__VER__'
+              - bash /opt/cj/app/deploy/install.sh web
+
+  member:
+    type: OS::Octavia::PoolMember
+    properties:
+      pool: {get_param: pool_id}
+      address: {get_attr: [port, fixed_ips, 0, ip_address]}
+      protocol_port: 8000
+
+outputs:
+  server_id: {value: {get_resource: server}}
+  ip: {value: {get_attr: [port, fixed_ips, 0, ip_address]}}

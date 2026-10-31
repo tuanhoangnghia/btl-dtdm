@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Đăng nhập · CloudJudge{% endblock %}
+{% block content %}
+<h1>Đăng nhập</h1>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label for="u">Tên đăng nhập</label><input id="u" type="text" name="username" autofocus required>
+  <label for="p">Mật khẩu</label><input id="p" type="password" name="password" required>
+  <p><button class="btn">Đăng nhập</button></p>
+</form>
+{% endblock %}

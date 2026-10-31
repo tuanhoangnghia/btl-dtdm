@@ -1,0 +1,151 @@
+heat_template_version: 2021-04-16
+description: >
+  CloudJudge lớp ứng dụng (B): Octavia LB (HTTP :80 → web :8000, health check /healthz) + floating IP,
+  ASG web (2–3 máy) là pool member, ASG worker (1–3 máy), 4 ScalingPolicy có alarm_url cho Alertmanager.
+  Máy rải sang 2 AZ bằng ServerGroup soft-anti-affinity (KE_HOACH D7). Triển khai: heat/deploy-cj-app.sh.
+
+parameters:
+  image:          {type: string, default: cj-base-v1}
+  web_flavor:     {type: string, default: cj.small}
+  worker_flavor:  {type: string, default: cj.medium}
+  ext_net:        {type: string, default: ext-net}
+  public_subnet:  {type: string, description: subnet-public (VIP của LB), output subnet_public_id của cj-net}
+  app_net:        {type: string, description: net-app, output net_app_id của cj-net}
+  sg_web:         {type: string, description: output sg_web_id của cj-net}
+  sg_worker:      {type: string, description: output sg_worker_id của cj-net}
+  release_version: {type: string, default: 0.1.0, description: "releases/cloudjudge-<ver>.tar.gz trên Swift"}
+  web_min:        {type: number, default: 2}
+  web_max:        {type: number, default: 3}
+  worker_min:     {type: number, default: 1}
+  worker_max:     {type: number, default: 3}
+  db_primary_host: {type: string, default: 10.0.3.10}
+  db_replica_host: {type: string, default: 10.0.3.11}
+  mq_host:        {type: string, default: 10.0.2.10}
+  admin_ssh_pubkeys_b64: {type: string, description: base64 các SSH public key quản trị (user cj)}
+  db_password:    {type: string, hidden: true}
+  db_ro_password: {type: string, hidden: true}
+  mq_password:    {type: string, hidden: true}
+  secret_key:     {type: string, hidden: true}
+  web_ac_id:      {type: string, hidden: true}
+  web_ac_secret:  {type: string, hidden: true}
+  worker_ac_id:   {type: string, hidden: true}
+  worker_ac_secret: {type: string, hidden: true}
+
+resources:
+  web_group:
+    type: OS::Nova::ServerGroup
+    properties: {name: cj-web-group, policies: [soft-anti-affinity]}
+  worker_group:
+    type: OS::Nova::ServerGroup
+    properties: {name: cj-worker-group, policies: [soft-anti-affinity]}
+
+  # ---------- Load balancer ----------
+  lb:
+    type: OS::Octavia::LoadBalancer
+    properties: {name: cj-lb, vip_subnet: {get_param: public_subnet}}
+  listener:
+    type: OS::Octavia::Listener
+    properties: {name: cj-http, loadbalancer: {get_resource: lb}, protocol: HTTP, protocol_port: 80}
+  pool:
+    type: OS::Octavia::Pool
+    properties: {name: cj-web-pool, listener: {get_resource: listener}, lb_algorithm: ROUND_ROBIN, protocol: HTTP}
+  monitor:
+    type: OS::Octavia::HealthMonitor
+    properties:
+      pool: {get_resource: pool}
+      type: HTTP
+      http_method: GET
+      url_path: /healthz
+      expected_codes: "200"
+      delay: 5
+      timeout: 3
+      max_retries: 2
+      max_retries_down: 2
+  lb_fip:
+    type: OS::Neutron::FloatingIP
+    properties: {floating_network: {get_param: ext_net}, port_id: {get_attr: [lb, vip_port_id]}}
+
+  # ---------- Web ----------
+  web_asg:
+    type: OS::Heat::AutoScalingGroup
+    depends_on: [monitor]
+    properties:
+      min_size: {get_param: web_min}
+      max_size: {get_param: web_max}
+      desired_capacity: {get_param: web_min}
+      # đổi release: thay từng máy một, luôn còn ít nhất 1 web phục vụ
+      rolling_updates: {min_in_service: 1, max_batch_size: 1, pause_time: 30}
+      resource:
+        type: CJ::WebMember
+        properties:
+          image: {get_param: image}
+          flavor: {get_param: web_flavor}
+          network: {get_param: app_net}
+          security_group: {get_param: sg_web}
+          server_group: {get_resource: web_group}
+          pool_id: {get_resource: pool}
+          release_version: {get_param: release_version}
+          db_primary_host: {get_param: db_primary_host}
+          db_replica_host: {get_param: db_replica_host}
+          mq_host: {get_param: mq_host}
+          admin_ssh_pubkeys_b64: {get_param: admin_ssh_pubkeys_b64}
+          db_password: {get_param: db_password}
+          db_ro_password: {get_param: db_ro_password}
+          mq_password: {get_param: mq_password}
+          secret_key: {get_param: secret_key}
+          ac_id: {get_param: web_ac_id}
+          ac_secret: {get_param: web_ac_secret}
+
+  # ---------- Worker ----------
+  worker_asg:
+    type: OS::Heat::AutoScalingGroup
+    properties:
+      min_size: {get_param: worker_min}
+      max_size: {get_param: worker_max}
+      desired_capacity: {get_param: worker_min}
+      rolling_updates: {min_in_service: 0, max_batch_size: 1, pause_time: 0}
+      resource:
+        type: CJ::Worker
+        properties:
+          image: {get_param: image}
+          flavor: {get_param: worker_flavor}
+          network: {get_param: app_net}
+          security_group: {get_param: sg_worker}
+          server_group: {get_resource: worker_group}
+          release_version: {get_param: release_version}
+          db_primary_host: {get_param: db_primary_host}
+          db_replica_host: {get_param: db_replica_host}
+          mq_host: {get_param: mq_host}
+          admin_ssh_pubkeys_b64: {get_param: admin_ssh_pubkeys_b64}
+          db_password: {get_param: db_password}
+          db_ro_password: {get_param: db_ro_password}
+          mq_password: {get_param: mq_password}
+          ac_id: {get_param: worker_ac_id}
+          ac_secret: {get_param: worker_ac_secret}
+
+  # ---------- Co giãn (Alertmanager gọi alarm_url, KE_HOACH D11, 12.3) ----------
+  web_up:
+    type: OS::Heat::ScalingPolicy
+    properties: {adjustment_type: change_in_capacity, auto_scaling_group_id: {get_resource: web_asg}, scaling_adjustment: 1, cooldown: 120}
+  web_down:
+    type: OS::Heat::ScalingPolicy
+    properties: {adjustment_type: change_in_capacity, auto_scaling_group_id: {get_resource: web_asg}, scaling_adjustment: -1, cooldown: 300}
+  worker_up:
+    type: OS::Heat::ScalingPolicy
+    properties: {adjustment_type: change_in_capacity, auto_scaling_group_id: {get_resource: worker_asg}, scaling_adjustment: 1, cooldown: 60}
+  worker_down:
+    type: OS::Heat::ScalingPolicy
+    properties: {adjustment_type: change_in_capacity, auto_scaling_group_id: {get_resource: worker_asg}, scaling_adjustment: -1, cooldown: 60}
+
+outputs:
+  lb_fip:
+    description: floating IP của LB (A ghi vào /etc/cloudjudge/lb_fip cho DNAT cổng 80)
+    value: {get_attr: [lb_fip, floating_ip_address]}
+  lb_vip:
+    value: {get_attr: [lb, vip_address]}
+  web_up_url:      {description: alarm_url (bí mật), value: {get_attr: [web_up, alarm_url]}}
+  web_down_url:    {description: alarm_url (bí mật), value: {get_attr: [web_down, alarm_url]}}
+  worker_up_url:   {description: alarm_url (bí mật), value: {get_attr: [worker_up, alarm_url]}}
+  worker_down_url: {description: alarm_url (bí mật), value: {get_attr: [worker_down, alarm_url]}}
+  web_count:    {value: {get_attr: [web_asg, current_size]}}
+  worker_count: {value: {get_attr: [worker_asg, current_size]}}

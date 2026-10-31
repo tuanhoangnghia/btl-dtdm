@@ -1,0 +1,22 @@
+[Unit]
+Description=CloudJudge web/API (gunicorn :8000)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=cjsvc
+Group=cjsvc
+EnvironmentFile=/etc/cloudjudge/cloudjudge.env
+Environment=PYTHONPATH=/opt/cj/app
+Environment=PROMETHEUS_MULTIPROC_DIR=/run/cj-web
+RuntimeDirectory=cj-web
+WorkingDirectory=/opt/cj/app
+ExecStart=/opt/cj/venv/bin/gunicorn -c /opt/cj/app/deploy/gunicorn.conf.py "cloudjudge.web:create_app()"
+Restart=always
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

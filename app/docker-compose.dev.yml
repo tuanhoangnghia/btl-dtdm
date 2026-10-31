@@ -1,0 +1,29 @@
+# Môi trường dev local (không cần OpenStack): MySQL + RabbitMQ + Swift all-in-one.
+#   cd app && docker compose -f docker-compose.dev.yml up -d
+# Mật khẩu ở đây chỉ dùng cho máy dev, không phải secret của cụm.
+name: cloudjudge-dev
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: dev-root
+    ports: ["3306:3306"]
+    volumes:
+      - ../db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./dev/02-users.sql:/docker-entrypoint-initdb.d/02-users.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-pdev-root"]
+      interval: 5s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    environment:
+      RABBITMQ_DEFAULT_USER: cj
+      RABBITMQ_DEFAULT_PASS: dev-mq
+    ports: ["5672:5672", "15672:15672"]
+
+  swift:
+    # tempauth: user test:tester, key testing, auth http://127.0.0.1:8080/auth/v1.0
+    image: openstackswift/saio
+    ports: ["8080:8080"]

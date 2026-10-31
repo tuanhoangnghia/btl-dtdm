@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Bảng điểm · CloudJudge{% endblock %}
+{% block content %}
+<h1>Bảng điểm</h1>
+<p class="muted">Nguồn dữ liệu: <strong>{{ source }}</strong> ({{ db_host }})</p>
+<table>
+  <tr><th>Hạng</th><th>Sinh viên</th>{% for s in slugs %}<th>{{ s }}</th>{% endfor %}<th>Tổng</th></tr>
+  {% for user, scores in ranking %}
+  <tr><td>{{ loop.index }}</td><td>{{ user }}</td>
+      {% for s in slugs %}<td>{{ scores.get(s, '') }}</td>{% endfor %}
+      <td><strong>{{ scores.values() | sum }}</strong></td></tr>
+  {% else %}<tr><td colspan="{{ slugs|length + 3 }}" class="muted">Chưa có bài nào được chấm.</td></tr>{% endfor %}
+</table>
+{% endblock %}
