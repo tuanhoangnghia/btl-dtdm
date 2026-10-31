@@ -76,18 +76,20 @@ Mỗi lần biên dịch và mỗi test chạy trong một container `docker run
 | web_up | `WebCPUHigh`: CPU web > 70% trong 1 phút | 120 s |
 | web_down | `WebCPULow`: CPU web < 20% trong 5 phút và > 2 web | 300 s |
 
-- **Vì sao co giãn worker theo độ dài hàng đợi, không theo CPU:** worker 1 vCPU luôn chạy 100% CPU khi đang chấm, dù hàng đợi có 1 bài hay 100 bài. Độ dài hàng đợi đo đúng "việc còn tồn", và cùng với tốc độ chấm (~8 bài/phút/worker) cho biết thời gian chờ.
+- **Vì sao co giãn worker theo độ dài hàng đợi, không theo CPU:** worker 1 vCPU luôn chạy 100% CPU khi đang chấm, dù hàng đợi có 1 bài hay 100 bài. Độ dài hàng đợi đo đúng "việc còn tồn", và cùng với tốc độ chấm (~7 bài `slow-sum`/phút/worker, đo trên worker) cho biết thời gian chờ.
 - **Cooldown** chống dao động (flapping): sau mỗi lần scale phải chờ máy mới boot xong và nhận việc thì mới đánh giá lại.
 
 ## 7. Kết quả đo (điền sau khi chạy trên cụm)
 | Đại lượng | Giá trị |
 |---|---|
-| Thời gian chấm 1 bài `a-plus-b` (lúc rảnh) | _ s |
-| Thời gian 1 test `slow-sum` / 1 bài | ~1,4 s / 8,0 s (đo trên controller; cần đo lại trên worker) |
+| Thời gian chấm 1 bài `a-plus-b` trên worker (gồm biên dịch, chưa gồm hàng đợi) | C++ 6,9 s / Python 3,2 s |
+| Thời gian 1 test `slow-sum` / 1 bài (worker `cj.medium`, 1 vCPU) | ~1,47 s / 8,4 s (≈ 7 bài/phút/worker) |
 | Loadtest 60 bài: chờ trung bình / p95 (1 worker cố định) | _ / _ |
 | Loadtest 60 bài: chờ trung bình / p95 (có autoscale) | _ / _ |
 | Tín hiệu worker_up → server ACTIVE → cài xong, `:9200` OK (đo 31/10, qua API Heat) | 22 s → **77 s** |
-| Alert firing → worker mới nhận bài đầu tiên (qua Alertmanager) | _ s (chờ `cj-mon` và sửa heat-api-cfn) |
+| POST `worker_up` alarm_url → server ACTIVE → cài xong (đo 31/10) | 18 s → **70 s** |
+| POST `worker_down` alarm_url → còn 1 worker (đo 31/10) | **14 s** |
+| Alert firing → worker mới nhận bài đầu tiên (qua Alertmanager) | _ s (chờ `cj-mon`) |
 | Tín hiệu worker_down → còn 1 worker (đo 31/10) | **15 s** |
 | Hàng đợi rỗng → thu về 1 worker (qua Alertmanager, gồm `for: 1m`) | _ s |
 | Tắt 1 web ở az1 → LB ngừng gửi request tới máy đó | _ s |

@@ -63,3 +63,23 @@ forkbomb      status=OK  out='fork stopped after 62 Resource temporarily unavail
 memory        status=RE  exit=-9 (bị kernel giết khi vượt 128 MB)
 output_flood  status=OLE stdout_bytes=8388608 (dừng ở 8 MB)
 Lần chạy đầu output_flood bị treo (deadlock docker kill trong luồng đọc stdout), đã sửa ở commit e1b7d5b rồi chạy lại như trên.
+
+=== 7. Sau khi A sửa (31/10 khuya): DNAT, alarm_url, bastion ===
+curl http://34.124.240.64/healthz -> HTTP/1.1 503 Service Unavailable (Octavia: chưa có member khỏe vì chưa có cj-data)
+SSH ProxyJump cj-controller -> cj@172.24.4.131 -> cj@10.0.2.96: OK (cj-worker-bdcbe0f8, release 0.1.3, cj-sandbox:1)
+Scale qua alarm_url (đường Alertmanager sẽ gọi):
+15:23:40 trước: 2 worker
+15:23:44 POST worker_down_url -> HTTP 200
+15:23:56 còn 1 worker sau 14s
+15:25:06 POST worker_up_url -> HTTP 200
+15:25:14 Heat tạo cj-worker-8964a9ad sau 8s
+15:25:24 cj-worker-8964a9ad ACTIVE sau 18s
+15:26:16 cj-worker-8964a9ad cài xong (CJ_INSTALL_DONE) sau 70s
+(sau đó POST worker_down_url -> 200, còn 1 worker cj-worker-8964a9ad, stack UPDATE_COMPLETE)
+
+=== 8. Đo sandbox trên worker thật (cj-worker-bdcbe0f8, cj.medium 1 vCPU, gọi grader trực tiếp, không qua DB) ===
+a-plus-b  ok.cpp  -> ACCEPTED 6/6 tổng thời gian chạy=40ms   wall=6.9s (gồm g++)
+a-plus-b  ok.py   -> ACCEPTED 6/6 tổng thời gian chạy=198ms  wall=3.2s
+slow-sum  ok.cpp  -> ACCEPTED 4/4 tổng thời gian chạy=5881ms wall=8.3s
+slow-sum  ok.cpp  -> ACCEPTED 4/4 tổng thời gian chạy=5940ms wall=8.5s
+=> ~1,47 s/test, ~7 bài/phút/worker. Giữ n = 3e8 (time limit 5000 ms còn dư ~3,4 lần).

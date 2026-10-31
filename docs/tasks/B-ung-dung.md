@@ -62,14 +62,20 @@ image/
 - [x] `image/build-cj-base.sh` + `image/build-image.sh` (tự tạo builder → chờ SHUTOFF → snapshot → xóa builder)
 - [x] Heat `cj-app.yaml`, `web_member.yaml`, `worker.yaml`, `env/cj-app.env.yaml`, `deploy-cj-app.sh` (validate bằng Heat thật, stack chạy)
 - [x] Image `cj-base-v1` trên cụm (min_disk 10 GB) → **cần báo C**
-- [x] Release trên Swift: dùng **0.1.2** (0.1.0/0.1.1 đóng gói sai quyền, đừng dùng)
-- [x] Stack `cj-app` CREATE/UPDATE_COMPLETE: `lb_fip` 172.24.4.64, web az1 + az2, 1 worker → **cần báo A (DNAT), C (`app-alarms.env`)**
-- [ ] Nộp bài qua IP public ra điểm (**chờ C: `cj-data`**; chờ A: DNAT)
-- [ ] Scale worker 1→3→1, số liệu đo: 1→2→1 qua API Heat đã đo (77 s / 15 s); **qua alarm_url bị 403, chờ A sửa heat-api-cfn**; theo hàng đợi chờ `cj-data` + `cj-mon`
+- [x] Release trên Swift: dùng **0.1.3** (0.1.0/0.1.1 đóng gói sai quyền, 0.1.2 chưa có bản sửa deadlock sandbox)
+- [x] Stack `cj-app` CREATE/UPDATE_COMPLETE: `lb_fip` 172.24.4.64, web az1 + az2, 1 worker. A đã DNAT :80 (public trả 503 của Octavia vì chưa có member khỏe)
+- [ ] Nộp bài qua IP public ra điểm (**chờ C: `cj-data`**)
+- [ ] Scale worker 1→3→1, số liệu đo: 1→2→1 qua API Heat (77 s / 15 s) và **qua alarm_url (HTTP 200, 70 s / 14 s)** đã đo; theo hàng đợi chờ `cj-data` + `cj-mon`
+- [x] `slow-sum` đo trên worker thật (`cj.medium`, 1 vCPU): ~1,47 s/test, ~8,4 s/bài → giữ n = 3·10^8
 - [ ] Failover web (chờ `cj-data`: chưa có DB thì /healthz 503, LB không có member khỏe)
 - [ ] Báo cáo phần B (đã có nháp `docs/report/B-ung-dung.md`, còn thiếu số liệu đo)
 
 ## Nhật ký
+- 31/10 khuya (B): A đã xong DNAT, sửa heat-api-cfn, thêm key `phuong` vào bastion.
+  - **DNAT**: `curl http://<CTL_IP>/healthz` → 503 do Octavia trả (chưa có web khỏe vì chưa có DB). Đúng.
+  - **Bastion**: vào VM bằng `ProxyJump cj-controller → cj@172.24.4.131 → cj@10.0.2.x` (mọi chặng dùng key `cloudjudge`). Worker chạy release 0.1.3, có `cj-sandbox:1`.
+  - **alarm_url**: `worker_down` → HTTP 200, còn 1 worker sau **14 s**; `worker_up` → HTTP 200, Heat tạo server sau 8 s, ACTIVE 18 s, `CJ_INSTALL_DONE` **70 s**. Đã trả về 1 worker.
+  - **slow-sum trên worker**: 4 test 5,88 s và 5,94 s (2 lần), wall 8,3–8,5 s/bài → ~7 bài/phút/worker. Giữ n = 3·10^8. `a-plus-b` ok.cpp 6,9 s/bài (gồm biên dịch), ok.py 3,2 s.
 - 31/10 tối (B): **Lên cụm.** Khóa B, SSH `cj-controller` (user `phuong`), repo đưa lên `~/cloudjudge` bằng git bundle. A đã tạo sẵn `app.env`, `data.env`, `chmod 1770 /home/cj/secrets`.
   - **Image**: `cj-base-v1` đầu tiên (một phiên trước build trên `cj.medium`) có `min_disk` 20 GB → Nova từ chối boot trên `cj.small` (web, và RabbitMQ của C). Build lại trên builder `cj.small` (325 s) → `min_disk` 10. Image cũ đổi tên `cj-base-v1-old-202610311751`, chưa xóa.
   - **Heat**: `description` không có nháy trong `{...}` chứa dấu phẩy làm hỏng tham số; Heat bản này không nhận `max_retries_down`. Đã sửa, validate bằng `openstack orchestration template validate`.
