@@ -113,7 +113,16 @@ class DockerSandbox:
 
     # ---------- nội bộ ----------
     def _kill(self, name: str) -> None:
-        subprocess.run([self.docker, "kill", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        try:
+            subprocess.run([self.docker, "kill", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           check=False, timeout=15)
+        except subprocess.TimeoutExpired:
+            log.warning("docker kill %s quá 15 giây", name)
+
+    def _kill_async(self, name: str) -> None:
+        # KHÔNG gọi docker kill ngay trong luồng đọc stdout: trong lúc chờ kill không ai đọc pipe, container
+        # ghi đầy pipe, luồng stream của dockerd nghẽn và docker kill chờ mãi (deadlock, đã gặp trên cụm).
+        threading.Thread(target=self._kill, args=(name,), daemon=True).start()
 
     def _exec(self, ws, argv, stdin: bytes, *, memory_mb, rw, tmpfs_mb, timeout_ms) -> RunResult:
         name = f"cj-{uuid.uuid4().hex[:12]}"
@@ -141,8 +150,8 @@ class DockerSandbox:
                 if len(out) + len(chunk) > OUTPUT_LIMIT:
                     if not state["ole"]:
                         state["ole"] = True
-                        self._kill(name)
-                    continue
+                        self._kill_async(name)
+                    continue  # vẫn đọc tiếp (bỏ dữ liệu) để container không bị nghẽn
                 out.extend(chunk)
 
         def read_err():
@@ -159,9 +168,19 @@ class DockerSandbox:
             proc.wait(timeout=timeout_ms / 1000 + DOCKER_OVERHEAD_S)
         except subprocess.TimeoutExpired:
             hard_timeout = True
-            self._kill(name)
-            proc.kill()
-            proc.wait()
+            self._kill_async(name)
+            try:
+                proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                # dừng client `docker run` (--rm): dockerd sẽ dọn container khi stream đóng
+                proc.kill()
+                proc.wait()
+        if state["ole"]:
+            try:
+                proc.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
         for t in threads:
             t.join(timeout=5)
 
