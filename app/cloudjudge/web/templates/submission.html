@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Bài nộp #{{ sub.id }} · CloudJudge{% endblock %}
+{% block content %}
+<h1>Bài nộp #{{ sub.id }}</h1>
+<table>
+  <tr><th>Bài</th><td><a href="{{ url_for('web.problem_view', slug=sub.slug) }}">{{ sub.title }}</a></td></tr>
+  <tr><th>Người nộp</th><td>{{ sub.username }}</td></tr>
+  <tr><th>Ngôn ngữ</th><td>{{ sub.language }}</td></tr>
+  <tr><th>Kết quả</th><td class="st st-{{ sub.status }}">{{ sub.status }}{% if refresh %} <span class="muted">(tự tải lại sau 2 giây)</span>{% endif %}</td></tr>
+  <tr><th>Điểm</th><td>{% if sub.score is not none %}{{ sub.score }} / 100 ({{ sub.passed }}/{{ sub.total }} test){% endif %}</td></tr>
+  <tr><th>Thời gian chạy</th><td>{% if sub.runtime_ms is not none %}{{ sub.runtime_ms }} ms{% endif %}</td></tr>
+  <tr><th>Máy chấm</th><td>{{ sub.worker_host or '' }}</td></tr>
+  <tr><th>Nộp lúc (UTC)</th><td>{{ sub.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td></tr>
+  <tr><th>Chấm xong (UTC)</th><td>{{ sub.finished_at.strftime('%Y-%m-%d %H:%M:%S') if sub.finished_at else '' }}</td></tr>
+  <tr><th>Object Swift</th><td><code>submissions/{{ sub.source_object }}</code></td></tr>
+</table>
+{% if sub.message %}<h3>Thông báo</h3><pre>{{ sub.message }}</pre>{% endif %}
+<h3>Mã nguồn</h3>
+{% if source is not none %}<pre><code>{{ source }}</code></pre>{% else %}<p class="muted">Không đọc được mã nguồn từ Swift.</p>{% endif %}
+{% endblock %}

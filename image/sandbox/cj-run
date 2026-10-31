@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""cj-run <time_limit_ms> <cmd> [args...]
+
+Chạy trong container sandbox, là PID 1. Chạy lệnh con với stdin/stdout/stderr thừa hưởng (stdin = input test,
+stdout = output của bài), đo thời gian, giết lệnh con nếu quá giới hạn. Kết quả ghi ở DÒNG CUỐI của stderr:
+    __CJ_RESULT__ {"status": "OK|TLE|RE", "exit": <int|null>, "time_ms": <int>}
+Bài làm không giả mạo được dòng này: cj-run chỉ in sau khi lệnh con đã kết thúc, và khi cj-run (PID 1) thoát
+thì mọi tiến trình còn lại trong container bị kernel giết.
+"""
+import json
+import math
+import signal
+import subprocess
+import sys
+import time
+
+try:
+    import resource
+except ImportError:  # Windows (chỉ khi chạy test trên laptop)
+    resource = None
+
+
+def main() -> int:
+    if len(sys.argv) < 3:
+        sys.stderr.write("usage: cj-run <time_limit_ms> <cmd> [args...]\n")
+        return 2
+    limit = int(sys.argv[1]) / 1000.0
+    cmd = sys.argv[2:]
+    cpu = math.ceil(limit) + 1
+
+    def limits():
+        resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu + 1))
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+    status, code = "OK", None
+    start = time.monotonic()
+    try:
+        proc = subprocess.Popen(cmd, preexec_fn=limits if resource else None)
+        try:
+            code = proc.wait(timeout=limit)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            status = "TLE"
+        else:
+            if hasattr(signal, "SIGXCPU") and code == -signal.SIGXCPU:  # vượt RLIMIT_CPU
+                status = "TLE"
+            elif code != 0:
+                status = "RE"
+    except OSError as e:
+        sys.stderr.write(f"cj-run: {e}\n")
+        status = "RE"
+    elapsed = int((time.monotonic() - start) * 1000)
+    if status == "OK" and elapsed > limit * 1000:
+        status = "TLE"
+    sys.stderr.write("\n__CJ_RESULT__ " + json.dumps({"status": status, "exit": code, "time_ms": elapsed}) + "\n")
+    sys.stderr.flush()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

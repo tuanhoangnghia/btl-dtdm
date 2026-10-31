@@ -1,6 +1,6 @@
 # Nhiệm vụ B – Ứng dụng, image, cân bằng tải, tự mở rộng (HM 6)
 
-**Người phụ trách:** ______  · **Bắt đầu ngay, không cần chờ cụm:** 28–30/10 làm hoàn toàn trên laptop.
+**Người phụ trách:** Phương (OpenStack user `phuong`)  · **Bắt đầu ngay, không cần chờ cụm:** 28–30/10 làm hoàn toàn trên laptop.
 
 Đọc trước: `docs/CONTRACT.md` (bắt buộc), `db/schema.sql`, `KE_HOACH_TRIEN_KHAI.md` mục 2 (D8, D9, D11), 9, 10, 11.3, 12.3, 12.5, 12.6, 14.1.
 
@@ -55,18 +55,31 @@ image/
 | 8/11 | Quay video (B điều khiển) |
 
 ## Tiến độ
-- [ ] Compose dev chạy được
-- [ ] Web đủ route
-- [ ] Worker + sandbox
-- [ ] Seed, bài mẫu, loadtest, release, install.sh
-- [ ] `image/build-cj-base.sh`
+- [ ] Compose dev chạy được: đã viết `app/docker-compose.dev.yml` + `dev.env.example` + `dev/02-users.sql`, **chưa chạy thử** (laptop chưa có Docker). Thay bằng bộ pytest không cần Docker (32 test qua)
+- [x] Web đủ route (login/logout, problems, submit, submissions, scoreboard đọc replica, teacher tạo bài, `/api/submit`, `/api/submissions/<id>`, `/healthz`, `/metrics`, footer hostname + AZ)
+- [x] Worker + sandbox (code + `image/sandbox/{Dockerfile,cj-run}`); `cj-run` đã test, **`docker run` thật chưa chạy** (cần VM Linux)
+- [x] Seed, bài mẫu, loadtest, release, install.sh (+ unit systemd, `cj-cli`); `release.sh` đã đóng gói thử (NO_UPLOAD)
+- [x] `image/build-cj-base.sh` + `image/build-image.sh` (tự tạo builder → chờ SHUTOFF → snapshot → xóa builder)
+- [x] Heat `cj-app.yaml`, `web_member.yaml`, `worker.yaml`, `env/cj-app.env.yaml`, `deploy-cj-app.sh` (đã kiểm YAML + khớp tham số, **chưa validate bằng Heat thật**)
 - [ ] Image `cj-base-v1` trên cụm → báo C
 - [ ] Release 0.1.0 trên Swift
 - [ ] Stack `cj-app` → báo A, C
 - [ ] Nộp bài qua IP public ra điểm
 - [ ] Scale worker 1→3→1, số liệu đo
 - [ ] Failover web
-- [ ] Báo cáo phần B
+- [ ] Báo cáo phần B (đã có nháp `docs/report/B-ung-dung.md`, còn thiếu số liệu đo)
 
 ## Nhật ký
-- 
+- 31/10 (B): Làm toàn bộ phần không phụ thuộc A/C trên nhánh `b/app-phase1`.
+  - **App** (`app/`): Flask + SQLAlchemy Core, bảng khớp `db/schema.sql`. Mọi mốc thời gian app ghi là UTC do app tự đặt (không dùng `CURRENT_TIMESTAMP` của DB) để `cj_oldest_pending_seconds` đúng trên mọi máy. CSRF token cho form, cookie ký `SECRET_KEY`. Bộ render markdown tự viết (venv trong image không có thư viện markdown), có escape HTML.
+  - **Swift**: chỉ dùng `put_object/get_object/head_object` (user có quyền qua ACL bị 403 nếu PUT container, xem nhật ký A 29/10). Local dùng tempauth (`openstackswift/saio`).
+  - **MQ**: web mở kết nối ngắn cho mỗi lần publish + publisher confirm (tránh kết nối chết do gunicorn không xử lý heartbeat). Worker heartbeat 300 s vì callback chấm chạy đồng bộ. Queue khai báo `durable=True`, **không có argument nào** (C khai báo queue thì phải giống hệt, nếu không sẽ lỗi PRECONDITION_FAILED).
+  - **Worker**: at-least-once, idempotent (bài đã có kết quả cuối thì bỏ qua, đang `RUNNING` thì chấm lại). Mất DB → nack requeue + nghỉ 5 s. SIGTERM (scale in) → đóng kết nối, bài chưa ack về hàng đợi. Python: kiểm cú pháp bằng `ast.parse` trên worker → `COMPILE_ERROR`. C++: biên dịch trong sandbox (mount rw riêng bước này, 512 MB, 30 s).
+  - **Sandbox**: `cj-run` (PID 1 trong container) đo thời gian chỉ của chương trình, không tính thời gian docker tạo container; kết quả in ở dòng cuối stderr. Output bị chặn ở 8 MB.
+  - **Metric**: web dùng `PROMETHEUS_MULTIPROC_DIR` (gunicorn 3 tiến trình). `cj_pending_submissions`/`cj_oldest_pending_seconds` mọi máy web báo cùng giá trị toàn cục → C phải dùng `max()`.
+  - **Bài mẫu**: `a-plus-b` 6 test (2 test ±9·10^18 làm tràn `long long` → `overflow.cpp` ra WRONG_ANSWER 67 điểm), lời giải `ok.cpp/ok.py/wrong.py/compile_error.cpp/tle.py`. `slow-sum` 4 test dãy LCG n = 3·10^8, đáp án tính bằng phép nhảy affine O(log n) (`gen.py`, đã đối chiếu với duyệt trực tiếp). **Cần đo trên worker thật** rồi chỉnh n bằng `python gen.py <n>` để đạt ~1,5 s/test.
+  - **Seed**: `cj-cli seed` chạy lại được; mật khẩu demo từ `CJ_SEED_PASSWORD` hoặc sinh ngẫu nhiên in 1 lần; token loadtest từ `LOADTEST_TOKEN` (`~/secrets/app.env`), phải dài đúng 64 ký tự (`openssl rand -hex 32`).
+  - **Image**: `build-image.sh` nhúng `image/sandbox/*` vào user-data (base64), builder lỗi thì in `CJ_BUILD_FAILED` và không tắt máy. Image Docker pull đúng tag cố định ở CONTRACT mục 6 (KE_HOACH mục 9 còn ghi `:latest`, đã theo CONTRACT).
+  - **Heat**: tên máy `cj-web-<8 ký tự>` / `cj-worker-<8 ký tự>`; web ASG `rolling_updates` min_in_service 1. `deploy-cj-app.sh` truyền secret qua file tham số tạm (600), từ chối giá trị có khoảng trắng/nháy/`$`/`\`; ghi 4 alarm_url vào `<thư mục secret>/app-alarms.env` (640, group cj) cho C.
+  - **Kiểm thử**: `app/tests/` 32 test qua (web, API, CSRF, phân quyền, metrics, scoreboard, seed idempotent, grader AC/WA/TLE/RE/CE, Judge idempotent/chấm lại, cờ cách ly docker, cj-run, end-to-end HTTP + loadtest 20 bài).
+  - **Còn chờ**: A bàn giao user Linux `phuong` + SSH key + Tailscale (để chạy `build-image.sh`, `release.sh`); C xong `cj-data` (để `deploy-cj-app.sh`).

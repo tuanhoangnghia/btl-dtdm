@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Bài đã nộp · CloudJudge{% endblock %}
+{% block content %}
+<h1>{% if me.role == 'teacher' %}Tất cả bài nộp{% else %}Bài đã nộp{% endif %}</h1>
+<table>
+  <tr><th>#</th><th>Người nộp</th><th>Bài</th><th>Ngôn ngữ</th><th>Kết quả</th><th>Điểm</th><th>Máy chấm</th><th>Lúc nộp (UTC)</th></tr>
+  {% for s in subs %}
+  <tr><td><a href="{{ url_for('web.submission_view', sub_id=s.id) }}">{{ s.id }}</a></td><td>{{ s.username }}</td>
+      <td>{{ s.slug }}</td><td>{{ s.language }}</td><td class="st st-{{ s.status }}">{{ s.status }}</td>
+      <td>{{ s.score if s.score is not none else '' }}</td><td>{{ s.worker_host or '' }}</td>
+      <td>{{ s.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td></tr>
+  {% else %}<tr><td colspan="8" class="muted">Chưa có bài nộp.</td></tr>{% endfor %}
+</table>
+{% endblock %}
