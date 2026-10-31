@@ -57,19 +57,29 @@ image/
 ## Tiến độ
 - [ ] Compose dev chạy được: đã viết `app/docker-compose.dev.yml` + `dev.env.example` + `dev/02-users.sql`, **chưa chạy thử** (laptop chưa có Docker). Thay bằng bộ pytest không cần Docker (32 test qua)
 - [x] Web đủ route (login/logout, problems, submit, submissions, scoreboard đọc replica, teacher tạo bài, `/api/submit`, `/api/submissions/<id>`, `/healthz`, `/metrics`, footer hostname + AZ)
-- [x] Worker + sandbox (code + `image/sandbox/{Dockerfile,cj-run}`); `cj-run` đã test, **`docker run` thật chưa chạy** (cần VM Linux)
+- [x] Worker + sandbox: đã chạy `docker run` thật (trên controller, 31/10): 7 lời giải mẫu đúng kết quả, 6 kiểu tấn công bị chặn (`docs/evidence/B-cum-31-10.txt`)
 - [x] Seed, bài mẫu, loadtest, release, install.sh (+ unit systemd, `cj-cli`); `release.sh` đã đóng gói thử (NO_UPLOAD)
 - [x] `image/build-cj-base.sh` + `image/build-image.sh` (tự tạo builder → chờ SHUTOFF → snapshot → xóa builder)
-- [x] Heat `cj-app.yaml`, `web_member.yaml`, `worker.yaml`, `env/cj-app.env.yaml`, `deploy-cj-app.sh` (đã kiểm YAML + khớp tham số, **chưa validate bằng Heat thật**)
-- [ ] Image `cj-base-v1` trên cụm → báo C
-- [ ] Release 0.1.0 trên Swift
-- [ ] Stack `cj-app` → báo A, C
-- [ ] Nộp bài qua IP public ra điểm
-- [ ] Scale worker 1→3→1, số liệu đo
-- [ ] Failover web
+- [x] Heat `cj-app.yaml`, `web_member.yaml`, `worker.yaml`, `env/cj-app.env.yaml`, `deploy-cj-app.sh` (validate bằng Heat thật, stack chạy)
+- [x] Image `cj-base-v1` trên cụm (min_disk 10 GB) → **cần báo C**
+- [x] Release trên Swift: dùng **0.1.2** (0.1.0/0.1.1 đóng gói sai quyền, đừng dùng)
+- [x] Stack `cj-app` CREATE/UPDATE_COMPLETE: `lb_fip` 172.24.4.64, web az1 + az2, 1 worker → **cần báo A (DNAT), C (`app-alarms.env`)**
+- [ ] Nộp bài qua IP public ra điểm (**chờ C: `cj-data`**; chờ A: DNAT)
+- [ ] Scale worker 1→3→1, số liệu đo: 1→2→1 qua API Heat đã đo (77 s / 15 s); **qua alarm_url bị 403, chờ A sửa heat-api-cfn**; theo hàng đợi chờ `cj-data` + `cj-mon`
+- [ ] Failover web (chờ `cj-data`: chưa có DB thì /healthz 503, LB không có member khỏe)
 - [ ] Báo cáo phần B (đã có nháp `docs/report/B-ung-dung.md`, còn thiếu số liệu đo)
 
 ## Nhật ký
+- 31/10 tối (B): **Lên cụm.** Khóa B, SSH `cj-controller` (user `phuong`), repo đưa lên `~/cloudjudge` bằng git bundle. A đã tạo sẵn `app.env`, `data.env`, `chmod 1770 /home/cj/secrets`.
+  - **Image**: `cj-base-v1` đầu tiên (một phiên trước build trên `cj.medium`) có `min_disk` 20 GB → Nova từ chối boot trên `cj.small` (web, và RabbitMQ của C). Build lại trên builder `cj.small` (325 s) → `min_disk` 10. Image cũ đổi tên `cj-base-v1-old-202610311751`, chưa xóa.
+  - **Heat**: `description` không có nháy trong `{...}` chứa dấu phẩy làm hỏng tham số; Heat bản này không nhận `max_retries_down`. Đã sửa, validate bằng `openstack orchestration template validate`.
+  - **Release**: 0.1.0/0.1.1 có thư mục gốc quyền 700 (mktemp + umask 027) → `cjsvc` không đọc được code, web/worker không chạy. `release.sh` đã `chmod -R go=rX`, `install.sh` cũng sửa quyền. Dùng **0.1.2**.
+  - **AZ**: 1 ASG + soft-anti-affinity cho 2 web cùng rơi vào az1 (tạo song song, trọng số RAM). Tách 2 ASG ghim AZ: `web_asg_az2` luôn 1 máy, `web_asg_az1` 1–2 máy (đích của web_up/web_down). Tham số `web_min/web_max` đổi thành `web_az1_min/web_az1_max`.
+  - **Scale**: qua API Heat (`openstack stack resource signal cj-app worker_up`): server mới ACTIVE sau 22 s, cài xong + `:9200` OK sau **77 s**; `worker_down` còn 1 máy sau **15 s**.
+  - **alarm_url bị 403** (đường Alertmanager dùng): heat-api-cfn gọi Keystone `/v3/ec2tokens` không có xác thực, Keystone 2025.x từ chối (401). Cần A thêm credential vào `[ec2authtoken]` của Heat (xem tin nhắn cho A). Trong lúc chờ, phương án D11 (gọi `stack resource signal`) chạy được.
+  - **`app-alarms.env`**: URL có `&` nên phải để trong nháy đơn mới `source` được; đã sửa `deploy-cj-app.sh`.
+  - **Sandbox**: chạy `docker run` thật trên controller (Docker của Kolla tắt bridge nên build phải `--network host`). Phát hiện deadlock khi bài in vô hạn (luồng đọc gọi `docker kill` đồng bộ) → sửa (kill ở luồng riêng có timeout, vẫn đọc tiếp). Image thử đã xóa khỏi controller.
+  - **Chưa vào được VM qua bastion**: bastion tạo trước khi A thêm key của `phuong` vào `admin_ssh_pubkeys.txt`. VM web/worker có key (tạo sau). Đang đọc kết quả qua `openstack console log show`.
 - 31/10 (B): Làm toàn bộ phần không phụ thuộc A/C trên nhánh `b/app-phase1`.
   - **App** (`app/`): Flask + SQLAlchemy Core, bảng khớp `db/schema.sql`. Mọi mốc thời gian app ghi là UTC do app tự đặt (không dùng `CURRENT_TIMESTAMP` của DB) để `cj_oldest_pending_seconds` đúng trên mọi máy. CSRF token cho form, cookie ký `SECRET_KEY`. Bộ render markdown tự viết (venv trong image không có thư viện markdown), có escape HTML.
   - **Swift**: chỉ dùng `put_object/get_object/head_object` (user có quyền qua ACL bị 403 nếu PUT container, xem nhật ký A 29/10). Local dùng tempauth (`openstackswift/saio`).

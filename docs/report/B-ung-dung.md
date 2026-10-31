@@ -2,7 +2,7 @@
 
 > Hạng mục phụ trách: **6** (cân bằng tải, tự mở rộng, chịu lỗi tầng ứng dụng); phần ứng dụng dùng cho HM 3, 4, 5, 7.
 > Mã: `app/`, `image/`, `heat/cj-app.yaml` + 2 template con, `scripts/release.sh`, `scripts/loadtest.py`.
-> **Còn thiếu:** số liệu đo trên cụm (mục 7) và ảnh chụp. Điền sau khi tập demo ngày 5–6/11.
+> **Còn thiếu:** phần số liệu đo phụ thuộc `cj-data`/`cj-mon` (mục 7) và ảnh chụp. Số liệu đã đo ngày 31/10: `docs/evidence/B-cum-31-10.txt`.
 
 ## 1. Kiến trúc ứng dụng
 
@@ -55,6 +55,7 @@ Mỗi lần biên dịch và mỗi test chạy trong một container `docker run
 - `cj-run` (PID 1 trong container) đo **thời gian riêng của chương trình** (không tính thời gian Docker tạo container), giết chương trình khi quá giới hạn, đặt thêm `RLIMIT_CPU`. Kết quả in ở dòng cuối stderr sau khi chương trình đã kết thúc, nên bài làm không giả mạo được.
 - Output bị chặn ở 8 MB. So sánh output bỏ khoảng trắng cuối dòng và các dòng trống cuối file.
 - Python: kiểm cú pháp bằng `ast.parse` (không thực thi) → `COMPILE_ERROR`. C++: `g++ -O2 -std=c++17`.
+- Đã thử trên Docker thật (`docs/evidence/B-cum-31-10.txt`): gọi mạng → `Network is unreachable`; ghi `/etc`, `/work` → read-only; uid 10001, capabilities 0; fork bomb dừng ở 62 tiến trình; vượt RAM → bị giết (RUNTIME_ERROR); in vô hạn → dừng ở 8 MB. Lần thử đầu, bài in vô hạn làm worker treo: luồng đọc stdout gọi `docker kill` đồng bộ nên không ai xả pipe, stream của dockerd nghẽn và `docker kill` chờ mãi. Đã sửa: kill ở luồng riêng có timeout, luồng đọc vẫn xả dữ liệu.
 - Giới hạn còn lại: worker phải có quyền gọi Docker daemon (tương đương root trên máy worker). Chấp nhận vì worker không giữ secret quan trọng ngoài credential chỉ-đọc `cj-worker`. Có thể nâng cấp bằng gVisor hoặc rootless Docker.
 
 ## 5. Golden image và phát hành
@@ -65,7 +66,7 @@ Mỗi lần biên dịch và mỗi test chạy trong một container `docker run
 ## 6. Cân bằng tải và tự mở rộng (HM 6)
 - **Octavia** ACTIVE_STANDBY (2 amphora ở 2 host, VRRP): listener HTTP :80 → pool ROUND_ROBIN → web :8000. Health monitor `GET /healthz` mỗi 5 s, timeout 3 s, 2 lần lỗi thì loại máy. `/healthz` trả 503 nếu web mất kết nối DB, nên LB cũng loại máy web "sống nhưng hỏng".
 - Pool member **không khai báo subnet**: amphora đi tới web qua router từ 10.0.1.x, nên sg-web chỉ mở 8000 cho 10.0.1.0/24 và worker không gọi thẳng được web (HM 2).
-- 2 `OS::Heat::AutoScalingGroup`: web 2–3 máy, worker 1–3 máy; mỗi nhóm có `ServerGroup soft-anti-affinity` để rải máy sang 2 host = 2 AZ.
+- Web: **2 `OS::Heat::AutoScalingGroup` ghim theo AZ**: `web_asg_az2` luôn 1 máy, `web_asg_az1` 1–2 máy (đích của web_up/web_down), tổng 2–3 máy. Ban đầu dùng 1 nhóm + `ServerGroup soft-anti-affinity`, nhưng khi Heat tạo 2 máy song song cả hai rơi vào cùng host az1 (Nova xếp chỗ trước khi máy nào vào nhóm, và trọng số RAM có thể hòa với trọng số anti-affinity), nên không bảo đảm được kịch bản "tắt web ở AZ-1, AZ-2 vẫn chạy". Worker 1–3 máy, rải bằng `soft-anti-affinity` (thêm từng máy một nên được rải).
 - 4 `OS::Heat::ScalingPolicy` (`change_in_capacity` ±1). Alertmanager gọi thẳng `alarm_url` (URL đã ký của heat-api-cfn), không cần Aodh/Ceilometer:
 
 | Chính sách | Kích hoạt bởi (C, `monitoring/rules.yml`) | Cooldown |
@@ -82,11 +83,13 @@ Mỗi lần biên dịch và mỗi test chạy trong một container `docker run
 | Đại lượng | Giá trị |
 |---|---|
 | Thời gian chấm 1 bài `a-plus-b` (lúc rảnh) | _ s |
-| Thời gian 1 test `slow-sum` / 1 bài | _ s / _ s |
+| Thời gian 1 test `slow-sum` / 1 bài | ~1,4 s / 8,0 s (đo trên controller; cần đo lại trên worker) |
 | Loadtest 60 bài: chờ trung bình / p95 (1 worker cố định) | _ / _ |
 | Loadtest 60 bài: chờ trung bình / p95 (có autoscale) | _ / _ |
-| Alert firing → worker mới ACTIVE → nhận bài đầu tiên | _ s → _ s |
-| Hàng đợi rỗng → thu về 1 worker | _ s |
+| Tín hiệu worker_up → server ACTIVE → cài xong, `:9200` OK (đo 31/10, qua API Heat) | 22 s → **77 s** |
+| Alert firing → worker mới nhận bài đầu tiên (qua Alertmanager) | _ s (chờ `cj-mon` và sửa heat-api-cfn) |
+| Tín hiệu worker_down → còn 1 worker (đo 31/10) | **15 s** |
+| Hàng đợi rỗng → thu về 1 worker (qua Alertmanager, gồm `for: 1m`) | _ s |
 | Tắt 1 web ở az1 → LB ngừng gửi request tới máy đó | _ s |
 
 ## 8. Kiểm thử

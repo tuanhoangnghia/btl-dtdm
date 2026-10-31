@@ -1,0 +1,65 @@
+Minh chứng phần B trên cụm, 31/10/2026 (B = phuong). Giờ UTC.
+
+=== 1. Golden image cj-base-v1 ===
+Build bằng image/build-image.sh trên builder cj.small (bản đầu build trên cj.medium có min_disk 20 GB,
+Nova từ chối boot trên cj.small: "Image cj-base-v1 requires 20 GB minimum disk space. Flavor cj.small has only 10 GB").
+  builder SHUTOFF sau 325s
+  cj-base-v1: status active, min_disk 10, virtual_size 10737418240, size 6919421952
+  (image cũ đổi tên cj-base-v1-old-202610311751, chưa xóa)
+
+=== 2. Release ===
+releases/cloudjudge-0.1.0.tar.gz, 0.1.1 (cùng commit b08927f, thư mục gốc quyền 700 -> cjsvc không đọc được code)
+releases/cloudjudge-0.1.2.tar.gz (commit fa4a06f, đã sửa quyền):
+  drwxr-xr-x root/root ./
+  -rw-r--r-- root/root ./VERSION
+
+=== 3. Stack cj-app ===
+openstack stack create/update cj-app -> CREATE_COMPLETE 11:05:45, UPDATE_COMPLETE 11:12:00 (release 0.1.2)
+  lb_fip 172.24.4.64   lb_vip 10.0.1.113   web_count 2   worker_count 1
+openstack server list --long:
+  cj-web-93c1b3f1    ACTIVE net-app 10.0.2.167 az1
+  cj-web-92be09eb    ACTIVE net-app 10.0.2.165 az2
+  cj-worker-6db61be0 ACTIVE net-app 10.0.2.159 az2
+(bản đầu dùng 1 ASG + soft-anti-affinity: cả 2 web rơi vào az1 -> tách 2 ASG ghim AZ)
+Console log web: "release 0.1.2 -> /opt/cj/app", curl /healthz -> 503 (đúng: chưa có stack cj-data)
+Console log worker: "worker metrics OK", "CJ_INSTALL_DONE role=worker release=0.1.2"
+LB: member 10.0.2.165/10.0.2.167 operating_status ERROR (health check /healthz 503 vì chưa có DB)
+
+=== 4. Scale worker (kích hoạt ScalingPolicy qua API Heat: openstack stack resource signal) ===
+11:53:53 trước: 1 worker (cj-worker-6db61be0)
+11:53:56 signal worker_up qua API Heat: OK
+11:54:03 Heat tạo server cj-worker-bdcbe0f8 sau 10s
+11:54:15 cj-worker-bdcbe0f8 ACTIVE sau 22s
+11:55:10 cj-worker-bdcbe0f8 cài xong (release tải từ Swift, cj-worker chạy, :9200 OK) sau 77s
+         cj-worker-bdcbe0f8 ACTIVE az1 / cj-worker-6db61be0 ACTIVE az2
+11:56:20 signal worker_down qua API Heat: OK
+11:56:32 còn 1 worker sau 15s (Heat bỏ máy cũ nhất, giữ cj-worker-bdcbe0f8)
+
+=== 5. alarm_url (đường Alertmanager -> heat-api-cfn) bị 403 ===
+POST worker_up_url -> HTTP 403
+<ErrorResponse><Error><Type>Sender</Type><Code>AccessDenied</Code><Message>User is not authorized to perform action</Message></Error></ErrorResponse>
+/var/log/kolla/heat/heat-api-cfn.log:
+  WARNING heat.api.aws.ec2token The [ec2authtoken] section does not include details to detect endpoint url.
+          Using the legacy endpoint detection and API call without authentication. This may be rejected by keystone due to recent policy change.
+  ERROR heat.api.aws.ec2token Failed to obtain a Keystone token from None: keystoneauth1.exceptions.http.Unauthorized: ... (HTTP 401)
+/etc/kolla/heat-api-cfn/heat.conf: [ec2authtoken] chỉ có auth_uri = http://10.10.0.10:5000
+Nguyên nhân: Keystone 2025.x bắt buộc xác thực cho /v3/ec2tokens; heat-api-cfn cần credential trong [ec2authtoken]
+(heat/api/aws/ec2token.py dùng ks_loading.load_auth_from_conf_options(cfg.CONF, 'ec2authtoken')). Việc của A.
+
+=== 6. Sandbox Docker thật (chạy thử trên controller, image cj-sandbox:1 build từ image/sandbox, đã xóa sau khi thử) ===
+a-plus-b  ok.cpp             -> ACCEPTED       score=100 6/6 runtime=30ms
+a-plus-b  ok.py              -> ACCEPTED       score=100 6/6 runtime=210ms
+a-plus-b  wrong.py           -> WRONG_ANSWER   score= 17 1/6  Test 1: WRONG_ANSWER
+a-plus-b  overflow.cpp       -> WRONG_ANSWER   score= 67 4/6  Test 5: WRONG_ANSWER
+a-plus-b  compile_error.cpp  -> COMPILE_ERROR  score=  0 0/6  /work/main.cpp: In function 'int main()'
+a-plus-b  tle.py             -> TIME_LIMIT     score=  0 0/6  Test 1: TIME_LIMIT
+slow-sum  ok.cpp             -> ACCEPTED       score=100 4/4 runtime=5627ms (~1,4 s/test trên controller; worker cần đo lại)
+
+Thử tấn công (time limit 3000 ms, memory 128 MB):
+network       status=OK  out='blocked: [Errno 101] Network is unreachable'
+write_fs      status=OK  out='blocked /etc/x Read-only file system | blocked /work/x Read-only file system | blocked /home/runner/x Read-only file system | WROTE /tmp/x'
+whoami        status=OK  out='uid 10001 gid 10001 caps 0000000000000000'
+forkbomb      status=OK  out='fork stopped after 62 Resource temporarily unavailable'
+memory        status=RE  exit=-9 (bị kernel giết khi vượt 128 MB)
+output_flood  status=OLE stdout_bytes=8388608 (dừng ở 8 MB)
+Lần chạy đầu output_flood bị treo (deadlock docker kill trong luồng đọc stdout), đã sửa ở commit e1b7d5b rồi chạy lại như trên.
