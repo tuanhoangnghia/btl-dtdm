@@ -8,6 +8,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 NAME=${1:-cj-base-v1}
 BUILDER=cj-builder
+# Snapshot giữ min_disk = đĩa của builder. Build trên cj.small (10 GB) để image boot được trên mọi flavor
+# cj.tiny/cj.small/cj.medium; build trên cj.medium (20 GB) thì máy cj.small bị Nova từ chối.
+BUILDER_FLAVOR=${BUILDER_FLAVOR:-cj.small}
 command -v openstack >/dev/null 2>&1 || source /home/cj/kolla-venv/bin/activate
 export OS_CLOUD=${OS_CLOUD:-cloudjudge}
 
@@ -25,8 +28,8 @@ sed -e "s|__SANDBOX_DOCKERFILE_B64__|$(base64 -w0 sandbox/Dockerfile)|" \
 grep -q '__SANDBOX_' "$UD" && { echo "ghép user-data lỗi"; exit 1; }
 
 NET=$(openstack stack output show cj-net net_public_id -f value -c output_value)
-echo "tạo $BUILDER (ubuntu-24.04, cj.medium, net-public $NET)"
-openstack server create "$BUILDER" --image ubuntu-24.04 --flavor cj.medium --network "$NET" \
+echo "tạo $BUILDER (ubuntu-24.04, $BUILDER_FLAVOR, net-public $NET)"
+openstack server create "$BUILDER" --image ubuntu-24.04 --flavor "$BUILDER_FLAVOR" --network "$NET" \
   --user-data "$UD" --wait -f value -c id
 
 START=$(date +%s)
