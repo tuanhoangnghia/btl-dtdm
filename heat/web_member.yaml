@@ -10,6 +10,7 @@ parameters:
   network: {type: string}
   security_group: {type: string}
   server_group: {type: string}
+  availability_zone: {type: string}
   pool_id: {type: string}
   release_version: {type: string}
   db_primary_host: {type: string}
@@ -38,6 +39,7 @@ resources:
       image: {get_param: image}
       flavor: {get_param: flavor}
       networks: [{port: {get_resource: port}}]
+      availability_zone: {get_param: availability_zone}
       scheduler_hints: {group: {get_param: server_group}}
       metadata: {cj_role: web}
       user_data_format: RAW

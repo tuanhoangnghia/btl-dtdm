@@ -12,6 +12,9 @@ case "$ROLE" in web|worker) ;; *) echo "vai trò không hợp lệ: $ROLE" >&2; 
 [ -f "$ENV_FILE" ] || { echo "thiếu $ENV_FILE" >&2; exit 1; }
 chmod 600 "$ENV_FILE"
 
+# release đóng gói sai quyền (thư mục 700) thì cjsvc không đọc được code
+chmod -R u=rwX,go=rX "$APP"
+
 id cjsvc >/dev/null 2>&1 || useradd --system --home-dir /var/lib/cj --shell /usr/sbin/nologin cjsvc
 install -d -o cjsvc -g cjsvc -m 755 /var/lib/cj
 

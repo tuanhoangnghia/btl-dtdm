@@ -20,6 +20,9 @@ echo "$VER" > "$STAGE/VERSION"
 (cd "$ROOT" && git rev-parse --short HEAD 2>/dev/null || echo unknown) > "$STAGE/GIT_COMMIT"
 find "$STAGE" -name __pycache__ -type d -prune -exec rm -rf {} +
 find "$STAGE" -name '*.env' -delete
+# mktemp -d tạo thư mục 700 và umask trên controller là 027: không sửa thì /opt/cj/app trên VM thuộc root 700,
+# user dịch vụ cjsvc không đọc được code (cj-web/cj-worker không khởi động).
+chmod -R u=rwX,go=rX "$STAGE"
 chmod 755 "$STAGE/deploy/install.sh" "$STAGE/deploy/cj-cli" "$STAGE/deploy/sandbox/cj-run"
 (cd "$OUT_DIR" && tar czf "$NAME" --owner=0 --group=0 -C "$STAGE" .)
 echo "đã tạo $OUT_DIR/$NAME ($(du -h "$OUT_DIR/$NAME" | cut -f1), commit $(cat "$STAGE/GIT_COMMIT"))"

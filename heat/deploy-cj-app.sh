@@ -66,7 +66,7 @@ p = {
     "web_ac_id": e["CJ_WEB_AC_ID"], "web_ac_secret": e["CJ_WEB_AC_SECRET"],
     "worker_ac_id": e["CJ_WORKER_AC_ID"], "worker_ac_secret": e["CJ_WORKER_AC_SECRET"],
 }
-for k in ("WEB_MIN", "WEB_MAX", "WORKER_MIN", "WORKER_MAX"):
+for k in ("WEB_AZ1_MIN", "WEB_AZ1_MAX", "WORKER_MIN", "WORKER_MAX"):
     if e.get(k):
         p[k.lower()] = int(e[k])
 bad = [k for k, v in p.items() if isinstance(v, str) and any(c in v for c in "\n\r \"'\\$`")]
