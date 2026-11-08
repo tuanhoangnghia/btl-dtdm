@@ -1,0 +1,138 @@
+# Unit test cho rules.yml bằng metric giả: promtool test rules (chạy qua monitoring/check.sh).
+rule_files: [../rules.yml]
+evaluation_interval: 5s
+
+tests:
+  # QueueHigh: 15 bài chờ liên tục → firing sau 30s; 5 bài → không
+  - interval: 5s
+    input_series:
+      - series: 'rabbitmq_queue_messages_ready{queue="submissions",job="rabbitmq"}'
+        values: '15x20'
+      - series: 'rabbitmq_queue_messages_ready{queue="other",job="rabbitmq"}'
+        values: '100x20'
+    alert_rule_test:
+      - {eval_time: 20s, alertname: QueueHigh, exp_alerts: []}
+      - eval_time: 40s
+        alertname: QueueHigh
+        exp_alerts:
+          - exp_labels: {severity: warning, action: worker_up}
+            exp_annotations:
+              summary: "Hàng đợi chấm dài: 15 bài đang chờ"
+              description: "Queue submissions có hơn 10 bài chờ trong 30 giây, đang thêm worker."
+
+  - interval: 5s
+    input_series:
+      - series: 'rabbitmq_queue_messages_ready{queue="submissions"}'
+        values: '5x20'
+    alert_rule_test:
+      - {eval_time: 60s, alertname: QueueHigh, exp_alerts: []}
+
+  # QueueIdle: hàng đợi trống + 2 worker → firing sau 1 phút; chỉ 1 worker → không
+  - interval: 15s
+    input_series:
+      - {series: 'rabbitmq_queue_messages{queue="submissions"}', values: '0x10'}
+      - {series: 'up{job="worker",instance="w1"}', values: '1x10'}
+      - {series: 'up{job="worker",instance="w2"}', values: '1x10'}
+    alert_rule_test:
+      - {eval_time: 30s, alertname: QueueIdle, exp_alerts: []}
+      - eval_time: 75s
+        alertname: QueueIdle
+        exp_alerts: [{exp_labels: {action: worker_down}, exp_annotations: {summary: "Hàng đợi trống, bớt 1 worker"}}]
+
+  - interval: 15s
+    input_series:
+      - {series: 'rabbitmq_queue_messages{queue="submissions"}', values: '0x10'}
+      - {series: 'up{job="worker",instance="w1"}', values: '1x10'}
+      - {series: 'up{job="worker",instance="w2"}', values: '0x10'}
+    alert_rule_test:
+      - {eval_time: 120s, alertname: QueueIdle, exp_alerts: []}
+
+  # WebCPUHigh: idle tăng 0,1 giây mỗi giây (CPU 90%) trên 2 máy web → firing; WebCPULow không
+  - interval: 15s
+    input_series:
+      - {series: 'node_cpu_seconds_total{job="node",role="web",instance="web1",cpu="0",mode="idle"}', values: '0+1.5x20'}
+      - {series: 'node_cpu_seconds_total{job="node",role="web",instance="web2",cpu="0",mode="idle"}', values: '0+1.5x20'}
+      - {series: 'up{job="web",instance="web1"}', values: '1x20'}
+      - {series: 'up{job="web",instance="web2"}', values: '1x20'}
+    alert_rule_test:
+      - {eval_time: 60s, alertname: WebCPUHigh, exp_alerts: []}
+      - eval_time: 150s
+        alertname: WebCPUHigh
+        exp_alerts: [{exp_labels: {severity: warning, action: web_up}, exp_annotations: {summary: "CPU web trung bình 90%, thêm 1 máy web"}}]
+      - {eval_time: 150s, alertname: WebCPULow, exp_alerts: []}
+
+  # WebCPULow: CPU 5% trên 3 máy web trong hơn 5 phút → firing; chỉ 2 máy web → không
+  - interval: 15s
+    input_series:
+      - {series: 'node_cpu_seconds_total{job="node",role="web",instance="web1",cpu="0",mode="idle"}', values: '0+14.25x40'}
+      - {series: 'node_cpu_seconds_total{job="node",role="web",instance="web2",cpu="0",mode="idle"}', values: '0+14.25x40'}
+      - {series: 'node_cpu_seconds_total{job="node",role="web",instance="web3",cpu="0",mode="idle"}', values: '0+14.25x40'}
+      - {series: 'up{job="web",instance="web1"}', values: '1x40'}
+      - {series: 'up{job="web",instance="web2"}', values: '1x40'}
+      - {series: 'up{job="web",instance="web3"}', values: '1x40'}
+    alert_rule_test:
+      - {eval_time: 4m, alertname: WebCPULow, exp_alerts: []}
+      - eval_time: 7m
+        alertname: WebCPULow
+        exp_alerts: [{exp_labels: {action: web_down}, exp_annotations: {summary: "CPU web thấp, bớt 1 máy web"}}]
+
+  - interval: 15s
+    input_series:
+      - {series: 'node_cpu_seconds_total{job="node",role="web",instance="web1",cpu="0",mode="idle"}', values: '0+14.25x40'}
+      - {series: 'node_cpu_seconds_total{job="node",role="web",instance="web2",cpu="0",mode="idle"}', values: '0+14.25x40'}
+      - {series: 'up{job="web",instance="web1"}', values: '1x40'}
+      - {series: 'up{job="web",instance="web2"}', values: '1x40'}
+    alert_rule_test:
+      - {eval_time: 9m, alertname: WebCPULow, exp_alerts: []}
+
+  # SubmissionStuck: 2 máy web cùng báo giá trị toàn cục, dùng max() → 1 cảnh báo
+  - interval: 15s
+    input_series:
+      - {series: 'cj_oldest_pending_seconds{job="web",instance="web1"}', values: '0 60 130 140'}
+      - {series: 'cj_oldest_pending_seconds{job="web",instance="web2"}', values: '0 60 130 140'}
+    alert_rule_test:
+      - {eval_time: 15s, alertname: SubmissionStuck, exp_alerts: []}
+      - eval_time: 45s
+        alertname: SubmissionStuck
+        exp_alerts: [{exp_labels: {severity: critical}, exp_annotations: {summary: "Có bài chờ chấm quá 2 phút (2m 20s)"}}]
+
+  # InstanceDown: up = 0 hơn 1 phút
+  - interval: 15s
+    input_series:
+      - {series: 'up{job="worker",instance="cj-worker-abc",role="worker"}', values: '1 1 0 0 0 0 0 0'}
+      - {series: 'up{job="web",instance="cj-web-xyz",role="web"}', values: '1x8'}
+    alert_rule_test:
+      - {eval_time: 45s, alertname: InstanceDown, exp_alerts: []}
+      - eval_time: 105s
+        alertname: InstanceDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: worker, instance: cj-worker-abc, role: worker}
+            exp_annotations: {summary: "worker trên cj-worker-abc không phản hồi"}
+
+  # MySQLDown, ReplicationBroken (tên metric kiểu 8.4), BackupStale
+  - interval: 15s
+    input_series:
+      - {series: 'mysql_up{job="mysql",instance="cj-mysql-replica",role="mysql-replica"}', values: '1 0 0 0 0'}
+      - {series: 'mysql_slave_status_replica_io_running{job="mysql",instance="cj-mysql-replica"}', values: '1 0 0 0 0 0 0 0'}
+      - {series: 'mysql_slave_status_replica_sql_running{job="mysql",instance="cj-mysql-replica"}', values: '1x8'}
+    alert_rule_test:
+      - eval_time: 60s
+        alertname: MySQLDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: mysql, instance: cj-mysql-replica, role: mysql-replica}
+            exp_annotations: {summary: "MySQL mysql-replica (cj-mysql-replica) không kết nối được"}
+      - {eval_time: 30s, alertname: ReplicationBroken, exp_alerts: []}
+      - eval_time: 90s
+        alertname: ReplicationBroken
+        exp_alerts:
+          - exp_labels: {severity: critical, instance: cj-mysql-replica}
+            exp_annotations: {summary: "Replication MySQL trên cj-mysql-replica đã dừng"}
+
+  - interval: 1h
+    input_series:
+      - {series: 'cj_backup_last_success_timestamp_seconds{job="node",instance="cj-mysql-primary"}', values: '0x30'}
+    alert_rule_test:
+      - {eval_time: 25h, alertname: BackupStale, exp_alerts: []}
+      - eval_time: 27h
+        alertname: BackupStale
+        exp_alerts: [{exp_labels: {severity: warning}, exp_annotations: {summary: "Hơn 26 giờ chưa có bản backup MySQL thành công"}}]

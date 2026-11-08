@@ -1,0 +1,2 @@
+# Script và cấu hình chạy trên Linux (VM, container): luôn giữ LF kể cả khi checkout trên Windows
+* text=auto eol=lf

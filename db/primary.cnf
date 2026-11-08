@@ -1,0 +1,13 @@
+# mysql-primary (10.0.3.10, az1). Mount vào /etc/mysql/conf.d/cj.cnf của container mysql:8.4.
+[mysqld]
+server_id                  = 1
+gtid_mode                  = ON
+enforce_gtid_consistency   = ON
+log_bin                    = mysql-bin
+binlog_expire_logs_seconds = 604800      # giữ binlog 7 ngày, bằng thời gian giữ bản backup trên Swift
+skip_name_resolve          = ON          # user MySQL khai báo theo IP (CONTRACT 8.3)
+character_set_server       = utf8mb4
+collation_server           = utf8mb4_unicode_ci
+default_time_zone          = '+00:00'    # app ghi mốc thời gian UTC
+innodb_buffer_pool_size    = 512M        # cj.medium 2 GB RAM
+max_connections            = 200

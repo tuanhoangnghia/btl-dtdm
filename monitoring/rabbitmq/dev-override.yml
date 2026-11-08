@@ -1,0 +1,9 @@
+# Dùng KÈM app/docker-compose.dev.yml của B (không sửa file của B): bật metric Prometheus theo từng queue, mở cổng 15692.
+#   docker compose -f app/docker-compose.dev.yml -f monitoring/rabbitmq/dev-override.yml up -d
+# Đường dẫn tương đối tính từ thư mục của file compose đầu tiên (app/).
+services:
+  rabbitmq:
+    ports: ["15692:15692"]
+    volumes:
+      - ../monitoring/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ../monitoring/rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/90-cloudjudge.conf:ro

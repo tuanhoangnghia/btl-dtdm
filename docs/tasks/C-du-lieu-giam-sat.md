@@ -1,6 +1,6 @@
 # Nhiệm vụ C – Lưu trữ, CSDL, giám sát, chi phí, ghép báo cáo (HM 3, 4, 7, 8)
 
-**Người phụ trách:** ______  · **Bắt đầu ngay, không cần chờ cụm:** 28–30/10 làm trên laptop bằng Docker.
+**Người phụ trách:** Trọng (OpenStack user `trong`, GitHub `trongjismeeee`)  · **Bắt đầu ngay, không cần chờ cụm:** 28–30/10 làm trên laptop bằng Docker.
 
 Đọc trước: `docs/CONTRACT.md` (bắt buộc), `KE_HOACH_TRIEN_KHAI.md` mục 1, 3, 10.2, 11.2, 11.4, 12, 13, 14.4.
 
@@ -58,17 +58,24 @@ docs/cost/
 | 9/11 | Xuất PDF, kiểm link repo/video, nộp |
 
 ## Tiến độ
-- [ ] Schema chốt với B
-- [ ] Replication local
-- [ ] Backup/restore local
-- [ ] Monitoring local + email thật
-- [ ] Rules + dashboard
+- [x] Schema chốt với B (B viết app khớp `db/schema.sql` v1, không cần đổi)
+- [ ] Replication local: đã viết `db/docker-compose.repl.yml` + `local-up.sh`, **chưa chạy** (laptop chưa có Docker)
+- [ ] Backup/restore local: đã viết `backup-mysql.sh` / `restore-mysql.sh` (local ghi ra thư mục), **chưa chạy**
+- [ ] Monitoring local + email thật: đã viết `monitoring/` + `local-up.sh` + `send-test-alert.sh`, **chưa chạy** (cần Docker + Gmail App Password)
+- [ ] Rules + dashboard: 6 luật kế hoạch + 3 luật dữ liệu, unit test promtool, dashboard 20 panel; **chưa chạy `check.sh`** (cần Docker)
 - [ ] Bảng chi phí
-- [ ] Stack `cj-data` trên cụm → báo B
-- [ ] Cron backup lên Swift
-- [ ] Stack `cj-mon` với alarm_url thật
+- [ ] Stack `cj-data` trên cụm → báo B: bản nháp `heat/cj-data.yaml` + `deploy-cj-data.sh` xong, chưa deploy
+- [ ] Cron backup lên Swift (có trong `db/vm-bootstrap.sh`, chưa chạy thật)
+- [ ] Stack `cj-mon` với alarm_url thật: bản nháp `heat/cj-mon.yaml` + `deploy-cj-mon.sh` xong, chưa deploy
 - [ ] Minh chứng HM 3, 4, 7, 8
 - [ ] Báo cáo ghép + PDF
 
 ## Nhật ký
-- 
+- 09/11 (C): **Hạn nộp lùi sang 22/11/2026** (KE_HOACH/CLAUDE.md còn ghi 09/11, cần PR chung sửa). Phiên đầu của C, làm trên nhánh `c/data-mon` (từ `main`, chỉ đọc tham khảo `origin/b/app-phase1`).
+  - **Máy C**: tạo cấu hình gcloud `cloudjudge` (Owner). Avast quét HTTPS làm gcloud lỗi `CERTIFICATE_VERIFY_FAILED` → ghép CA của Avast (`C:\ProgramData\Avast Software\Avast\wscert.pem`) với bộ CA của gcloud vào `%APPDATA%\gcloud\cj-ca-bundle.pem`, đặt `core/custom_ca_certs_file` **chỉ cho cấu hình cloudjudge**. SSH key `~/.ssh/cloudjudge` (ed25519, `SHA256:OjqGKYjFa+G3O9uEAU1c2F8akdmZ05k6US+wfQbHLS0`) + `Host cj-controller` trong `~/.ssh/config`; **chờ A cài key** (`05-add-user.sh trong trong "<pubkey>"` + `admin_ssh_pubkeys.txt`). Laptop chưa có Docker.
+  - **`db/`**: `primary.cnf`/`replica.cnf` (GTID, `skip_name_resolve`, UTC); `users.sql.tpl` (5 user CONTRACT 8.3, host theo mạng: app `10.0.2.%`, repl `10.0.3.%`, exporter/backup `127.0.0.1`); `setup-primary.sh` (schema + user, chạy lại được); `setup-replica.sh` (`SOURCE_AUTO_POSITION=1`, `GET_SOURCE_PUBLIC_KEY=1`, bật `super_read_only` bằng `SET PERSIST` sau khi khởi tạo, vì đặt trong cnf thì entrypoint lần đầu không ghi được user root). Replica nhận cả schema lẫn user qua binlog nên không chạy schema trên replica. `backup-mysql.sh` (`--single-transaction --set-gtid-purged=OFF` để restore vào primary sinh GTID mới và tự sang replica; Swift `--skip-container-put` + `X-Delete-After: 604800`; ghi `cj_backup_last_success_timestamp_seconds` qua textfile collector). `restore-mysql.sh` (latest / object / file, bắt gõ YES). `test-replication.sh` (minh chứng HM 4, ghi vào CSDL riêng `cj_check`, không đụng bảng app). Root MySQL chỉ đăng nhập qua socket (`MYSQL_ROOT_HOST=localhost`), trên VM đọc mật khẩu từ file `/run/cj/root.pw`, lệnh tắt `sudo cj-mysql`.
+  - **`monitoring/`**: `prometheus.yml.tpl` (openstack_sd + relabel theo `cj_role`, job node/web/worker/rabbitmq/mysql, `refresh_interval: 15s` để máy bị scale in biến nhanh khỏi danh sách); `rules.yml` (QueueHigh, QueueIdle, WebCPUHigh, WebCPULow, SubmissionStuck, InstanceDown + MySQLDown, ReplicationBroken, BackupStale); `tests/rules.test.yml`; `alertmanager.yml.tpl` (4 route `action` → alarm_url, `continue` để QueueHigh/WebCPUHigh vẫn gửi thư); Grafana provisioning + `make-dashboard.py` → `cloudjudge.json` (JSON gọn vì nhúng vào user_data, Nova giới hạn 64 KB: hiện ~50 KB sau base64); `rabbitmq/` (per-object metrics) + `dev-override.yml` dùng kèm compose của B mà không sửa file của B; bộ chạy local (`local-up.sh`, webhook-echo đóng vai Heat).
+  - **Heat (nháp, chưa deploy)**: `cj-data.yaml`: 3 volume Cinder (không đặt AZ cho volume vì Cinder chỉ có zone mặc định), port IP cố định, `OS::Heat::CloudConfig` nhúng file `db/` bằng `get_file`, mỗi máy chỉ nhận secret nó cần, `user_data_update_policy: IGNORE` để stack update không thay máy CSDL. `cj-mon.yaml`: máy 10.0.2.11, render cấu hình trong VM bằng `monitoring/render.sh`. 2 script deploy theo mẫu `deploy-cj-app.sh` của B (secret qua file tham số 600, chờ `CJ_DATA_READY`/`CJ_MON_READY` trên console log).
+  - **Đã kiểm**: `bash -n` mọi script, mọi file YAML parse được, render template bằng giá trị giả. **Chưa kiểm**: `promtool`/`amtool` (cần Docker; tải binary bị chặn), chạy thật MySQL/RabbitMQ.
+  - **Cần xác minh khi có Docker**: tên metric replication của `mysqld-exporter v0.16.0` với MySQL 8.4 (`mysql_slave_status_replica_io_running` hay tên khác; luật và dashboard đã dùng `or` cho cả 2 kiểu tên).
+  - **Mở**: mật khẩu admin Grafana trên cụm hiện sinh ngẫu nhiên trong VM (`/etc/cj-mon/grafana/admin.pw`), không thêm biến vào `data.env` để khỏi đổi CONTRACT.

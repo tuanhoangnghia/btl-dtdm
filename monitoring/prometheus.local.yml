@@ -1,0 +1,30 @@
+# Prometheus ở local (docker-compose.local.yml): mục tiêu tĩnh trên máy dev thay cho openstack_sd.
+#   web/worker: app của B chạy trên máy (flask :8000, worker :9200, xem app/README.md)
+#   rabbitmq:   app/docker-compose.dev.yml + monitoring/rabbitmq/dev-override.yml (mở :15692)
+#   mysql:      db/docker-compose.repl.yml (exporter :9104 primary, :9105 replica)
+# Không có node_exporter ở local: các luật theo CPU/node chỉ thử bằng promtool (tests/rules.test.yml).
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels: {cluster: cloudjudge-local}
+
+rule_files: [/etc/prometheus/rules.yml]
+
+alerting:
+  alertmanagers: [{static_configs: [{targets: ['alertmanager:9093']}]}]
+
+scrape_configs:
+  - job_name: web
+    static_configs: [{targets: ['host.docker.internal:8000'], labels: {role: web, instance: local-web}}]
+  - job_name: worker
+    static_configs: [{targets: ['host.docker.internal:9200'], labels: {role: worker, instance: local-worker}}]
+  - job_name: rabbitmq
+    static_configs: [{targets: ['host.docker.internal:15692'], labels: {role: rabbitmq, instance: local-rabbitmq}}]
+  - job_name: mysql
+    static_configs:
+      - {targets: ['host.docker.internal:9104'], labels: {role: mysql-primary, instance: local-mysql-primary}}
+      - {targets: ['host.docker.internal:9105'], labels: {role: mysql-replica, instance: local-mysql-replica}}
+  - job_name: prometheus
+    static_configs: [{targets: ['localhost:9090'], labels: {role: monitor, instance: local-monitor}}]
+  - job_name: alertmanager
+    static_configs: [{targets: ['alertmanager:9093'], labels: {role: monitor, instance: local-monitor}}]

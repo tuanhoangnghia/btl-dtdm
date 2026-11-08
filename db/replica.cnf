@@ -1,0 +1,16 @@
+# mysql-replica (10.0.3.11, az2). Mount vào /etc/mysql/conf.d/cj.cnf của container mysql:8.4.
+# super_read_only không đặt ở đây (lần khởi tạo đầu, entrypoint cần ghi bảng user); setup-replica.sh bật bằng SET PERSIST.
+[mysqld]
+server_id                  = 2
+gtid_mode                  = ON
+enforce_gtid_consistency   = ON
+log_bin                    = mysql-bin
+relay_log                  = relay-bin
+read_only                  = ON
+binlog_expire_logs_seconds = 604800
+skip_name_resolve          = ON
+character_set_server       = utf8mb4
+collation_server           = utf8mb4_unicode_ci
+default_time_zone          = '+00:00'
+innodb_buffer_pool_size    = 512M
+max_connections            = 200

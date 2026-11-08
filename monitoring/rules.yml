@@ -1,0 +1,78 @@
+# Luật cảnh báo CloudJudge (KE_HOACH 12.2). Thử: bash monitoring/check.sh (promtool test rules tests/rules.test.yml).
+# Nhãn action=<worker_up|worker_down|web_up|web_down> → Alertmanager gọi alarm_url tương ứng của cj-app (tự co giãn, D11).
+# Nhãn severity=<warning|critical> → email. Metric của app theo CONTRACT 9: cj_pending/oldest là giá trị toàn cục nên dùng max().
+groups:
+  - name: cloudjudge-scaling
+    rules:
+      # 1. Hàng đợi dài → thêm worker (Alertmanager lặp lại mỗi phút khi còn firing, Heat chặn ở worker_max)
+      - alert: QueueHigh
+        expr: sum(rabbitmq_queue_messages_ready{queue="submissions"}) > 10
+        for: 30s
+        labels: {severity: warning, action: worker_up}
+        annotations:
+          summary: "Hàng đợi chấm dài: {{ $value }} bài đang chờ"
+          description: "Queue submissions có hơn 10 bài chờ trong 30 giây, đang thêm worker."
+
+      # 2. Hàng đợi trống (kể cả bài đang chấm) và còn hơn 1 worker → bớt worker
+      - alert: QueueIdle
+        expr: sum(rabbitmq_queue_messages{queue="submissions"}) == 0 and count(up{job="worker"} == 1) > 1
+        for: 1m
+        labels: {action: worker_down}
+        annotations:
+          summary: "Hàng đợi trống, bớt 1 worker"
+
+      # 3. CPU trung bình các máy web cao → thêm web (ở az1)
+      - alert: WebCPUHigh
+        expr: avg(1 - avg by (instance) (rate(node_cpu_seconds_total{job="node",role="web",mode="idle"}[1m]))) > 0.7
+        for: 1m
+        labels: {severity: warning, action: web_up}
+        annotations:
+          summary: "CPU web trung bình {{ $value | humanizePercentage }}, thêm 1 máy web"
+
+      # 4. CPU web thấp lâu và đang có hơn 2 web → bớt web
+      - alert: WebCPULow
+        expr: avg(1 - avg by (instance) (rate(node_cpu_seconds_total{job="node",role="web",mode="idle"}[1m]))) < 0.2 and count(up{job="web"} == 1) > 2
+        for: 5m
+        labels: {action: web_down}
+        annotations:
+          summary: "CPU web thấp, bớt 1 máy web"
+
+  - name: cloudjudge-health
+    rules:
+      # 5. Có bài chờ chấm quá 2 phút (worker chết, hàng đợi kẹt...)
+      - alert: SubmissionStuck
+        expr: max(cj_oldest_pending_seconds) > 120
+        labels: {severity: critical}
+        annotations:
+          summary: "Có bài chờ chấm quá 2 phút ({{ $value | humanizeDuration }})"
+
+      # 6. Mục tiêu không trả lời (VM tắt, dịch vụ chết)
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.job }} trên {{ $labels.instance }} không phản hồi"
+
+      # Bổ sung cho hạng mục 3, 4 (dữ liệu)
+      - alert: MySQLDown
+        expr: mysql_up == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: "MySQL {{ $labels.role }} ({{ $labels.instance }}) không kết nối được"
+
+      - alert: ReplicationBroken
+        # mysqld_exporter đặt tên cột theo câu lệnh MySQL trả về: SHOW REPLICA STATUS (8.4) hoặc SHOW SLAVE STATUS (cũ)
+        expr: (max by (instance) (mysql_slave_status_replica_io_running or mysql_slave_status_slave_io_running) == 0) or (max by (instance) (mysql_slave_status_replica_sql_running or mysql_slave_status_slave_sql_running) == 0)
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "Replication MySQL trên {{ $labels.instance }} đã dừng"
+
+      - alert: BackupStale
+        # backup-mysql.sh ghi metric này qua textfile collector của node_exporter trên mysql-primary sau mỗi lần thành công
+        expr: time() - max(cj_backup_last_success_timestamp_seconds) > 26 * 3600
+        labels: {severity: warning}
+        annotations:
+          summary: "Hơn 26 giờ chưa có bản backup MySQL thành công"

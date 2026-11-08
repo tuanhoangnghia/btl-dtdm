@@ -1,0 +1,97 @@
+heat_template_version: 2021-04-16
+description: >
+  CloudJudge giám sát (C): máy monitor (10.0.2.11, net-app, sg-monitor) chạy Prometheus (openstack_sd bằng credential
+  cj-monitor), Alertmanager (email Gmail + gọi 4 alarm_url của cj-app để co giãn) và Grafana. KE_HOACH 11.4, 12.
+  Cấu hình lấy từ monitoring/ bằng get_file, render trong VM bằng monitoring/render.sh. Triển khai: heat/deploy-cj-mon.sh.
+  Đổi tham số (vd alarm_url mới) thì stack update sẽ THAY máy monitor (mất lịch sử metric, cấu hình dựng lại từ đầu).
+
+parameters:
+  image:          {type: string, default: cj-base-v1}
+  flavor:         {type: string, default: cj.medium}
+  az:             {type: string, default: az1}
+  net_app:        {type: string, description: "output net_app_id của cj-net"}
+  subnet_app:     {type: string, description: "output subnet_app_id của cj-net"}
+  sg_monitor:     {type: string, description: "output sg_monitor_id của cj-net"}
+  admin_ssh_pubkeys_b64: {type: string, description: "base64 các SSH public key quản trị (user cj)"}
+  mon_ac_id:          {type: string, hidden: true, description: "application credential của cj-monitor (role reader)"}
+  mon_ac_secret:      {type: string, hidden: true}
+  smtp_user:          {type: string, hidden: true}
+  smtp_app_password:  {type: string, hidden: true}
+  alert_email_to:     {type: string}
+  web_up_url:         {type: string, hidden: true, description: "output web_up_url của cj-app (URL đã ký)"}
+  web_down_url:       {type: string, hidden: true}
+  worker_up_url:      {type: string, hidden: true}
+  worker_down_url:    {type: string, hidden: true}
+
+resources:
+  port:
+    type: OS::Neutron::Port
+    properties:
+      name: cj-monitor
+      network: {get_param: net_app}
+      fixed_ips: [{subnet: {get_param: subnet_app}, ip_address: 10.0.2.11}]
+      security_groups: [{get_param: sg_monitor}]
+
+  init:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        users: [{name: cj, shell: /bin/bash, sudo: "ALL=(ALL) NOPASSWD:ALL"}]
+        write_files:
+          - {path: /opt/cj-mon/vm-bootstrap.sh,       permissions: "0755", content: {get_file: ../monitoring/vm-bootstrap.sh}}
+          - {path: /opt/cj-mon/render.sh,             permissions: "0755", content: {get_file: ../monitoring/render.sh}}
+          - {path: /opt/cj-mon/docker-compose.yml,    permissions: "0644", content: {get_file: ../monitoring/docker-compose.yml}}
+          - {path: /opt/cj-mon/prometheus.yml.tpl,    permissions: "0644", content: {get_file: ../monitoring/prometheus.yml.tpl}}
+          - {path: /opt/cj-mon/alertmanager.yml.tpl,  permissions: "0644", content: {get_file: ../monitoring/alertmanager.yml.tpl}}
+          - {path: /opt/cj-mon/rules.yml,             permissions: "0644", content: {get_file: ../monitoring/rules.yml}}
+          - {path: /opt/cj-mon/grafana/datasource.yml, permissions: "0644", content: {get_file: ../monitoring/grafana/datasource.yml}}
+          - {path: /opt/cj-mon/grafana/dashboards.yml, permissions: "0644", content: {get_file: ../monitoring/grafana/dashboards.yml}}
+          - {path: /opt/cj-mon/grafana/cloudjudge.json, permissions: "0644", content: {get_file: ../monitoring/grafana/cloudjudge.json}}
+          - path: /etc/cloudjudge/mon.env
+            permissions: "0600"
+            content:
+              str_replace:
+                # alarm_url có ký tự & nên để trong nháy đơn (file được source bằng bash)
+                template: |
+                  ADMIN_SSH_PUBKEYS_B64=__KEYS__
+                  MON_AC_ID=__ACID__
+                  MON_AC_SECRET=__ACSECRET__
+                  SMTP_USER=__SMTPU__
+                  SMTP_APP_PASSWORD='__SMTPP__'
+                  ALERT_EMAIL_TO=__TO__
+                  WEB_UP_URL='__WEBUP__'
+                  WEB_DOWN_URL='__WEBDOWN__'
+                  WORKER_UP_URL='__WORKERUP__'
+                  WORKER_DOWN_URL='__WORKERDOWN__'
+                params:
+                  __KEYS__: {get_param: admin_ssh_pubkeys_b64}
+                  __ACID__: {get_param: mon_ac_id}
+                  __ACSECRET__: {get_param: mon_ac_secret}
+                  __SMTPU__: {get_param: smtp_user}
+                  __SMTPP__: {get_param: smtp_app_password}
+                  __TO__: {get_param: alert_email_to}
+                  __WEBUP__: {get_param: web_up_url}
+                  __WEBDOWN__: {get_param: web_down_url}
+                  __WORKERUP__: {get_param: worker_up_url}
+                  __WORKERDOWN__: {get_param: worker_down_url}
+        runcmd: [[bash, /opt/cj-mon/vm-bootstrap.sh]]
+
+  server:
+    type: OS::Nova::Server
+    properties:
+      name: cj-monitor
+      image: {get_param: image}
+      flavor: {get_param: flavor}
+      availability_zone: {get_param: az}
+      networks: [{port: {get_resource: port}}]
+      metadata: {cj_role: monitor}
+      user_data_format: RAW
+      user_data: {get_attr: [init, config]}
+
+outputs:
+  monitor_ip: {value: {get_attr: [port, fixed_ips, 0, ip_address]}}
+  urls:
+    value:
+      prometheus: http://10.0.2.11:9090
+      alertmanager: http://10.0.2.11:9093
+      grafana: http://10.0.2.11:3000

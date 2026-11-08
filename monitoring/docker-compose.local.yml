@@ -1,0 +1,44 @@
+# Giám sát ở local (cần Docker). Dùng: bash monitoring/local-up.sh (render cấu hình vào monitoring/.local rồi up).
+#   Prometheus http://127.0.0.1:9090 · Alertmanager http://127.0.0.1:9093 · Grafana http://127.0.0.1:3000 (admin / admin)
+#   webhook-echo :9999 in ra các lần Alertmanager "gọi alarm_url" (thay cho Heat ở local): docker logs -f cj-webhook-echo
+name: cloudjudge-mon
+
+x-host: &host
+  extra_hosts: ["host.docker.internal:host-gateway"]   # Linux; Docker Desktop đã có sẵn
+
+services:
+  prometheus:
+    <<: *host
+    image: prom/prometheus:v2.55.1
+    container_name: cj-prometheus
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.path=/prometheus, --web.enable-lifecycle]
+    ports: ["9090:9090"]
+    volumes:
+      - ./prometheus.local.yml:/etc/prometheus/prometheus.yml:ro
+      - ./rules.yml:/etc/prometheus/rules.yml:ro
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: cj-alertmanager
+    command: [--config.file=/etc/alertmanager/alertmanager.yml, --storage.path=/alertmanager, --cluster.listen-address=]
+    ports: ["9093:9093"]
+    volumes:
+      - ./.local/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+
+  grafana:
+    image: grafana/grafana-oss:11.3.0
+    container_name: cj-grafana
+    environment:
+      PROM_URL: http://prometheus:9090
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/cloudjudge.json
+    ports: ["3000:3000"]
+    volumes:
+      - ./grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - ./grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./grafana/cloudjudge.json:/etc/grafana/dashboards/cloudjudge.json:ro
+
+  webhook-echo:
+    image: python:3.12-alpine
+    container_name: cj-webhook-echo
+    command: [python, -u, /webhook-echo.py]
+    volumes: ["./webhook-echo.py:/webhook-echo.py:ro"]
