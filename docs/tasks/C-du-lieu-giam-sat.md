@@ -63,7 +63,9 @@ docs/cost/
 - [ ] Backup/restore local: đã viết `backup-mysql.sh` / `restore-mysql.sh` (local ghi ra thư mục), **chưa chạy**
 - [ ] Monitoring local + email thật: đã viết `monitoring/` + `local-up.sh` + `send-test-alert.sh`, **chưa chạy** (cần Docker + Gmail App Password)
 - [ ] Rules + dashboard: 6 luật kế hoạch + 3 luật dữ liệu, unit test promtool, dashboard 20 panel; **chưa chạy `check.sh`** (cần Docker)
-- [ ] Bảng chi phí
+- [ ] Bảng chi phí: bản nháp `docs/cost/chi-phi.md` (3 phương án tính lại: 14,9 / 6,7 / 5,9 triệu đ/tháng); còn kiểm lại bằng Pricing Calculator + số thật từ Billing
+- [ ] `scripts/cj-health.sh`: đã viết, chưa chạy trên cụm
+- [ ] Báo cáo: nháp phần C `docs/report/C-du-lieu-giam-sat.md` + khung báo cáo chính `docs/report/bao-cao.md`; còn số liệu đo, ảnh
 - [ ] Stack `cj-data` trên cụm → báo B: bản nháp `heat/cj-data.yaml` + `deploy-cj-data.sh` xong, chưa deploy
 - [ ] Cron backup lên Swift (có trong `db/vm-bootstrap.sh`, chưa chạy thật)
 - [ ] Stack `cj-mon` với alarm_url thật: bản nháp `heat/cj-mon.yaml` + `deploy-cj-mon.sh` xong, chưa deploy
@@ -79,3 +81,6 @@ docs/cost/
   - **Đã kiểm**: `bash -n` mọi script, mọi file YAML parse được, render template bằng giá trị giả. **Chưa kiểm**: `promtool`/`amtool` (cần Docker; tải binary bị chặn), chạy thật MySQL/RabbitMQ.
   - **Cần xác minh khi có Docker**: tên metric replication của `mysqld-exporter v0.16.0` với MySQL 8.4 (`mysql_slave_status_replica_io_running` hay tên khác; luật và dashboard đã dùng `or` cho cả 2 kiểu tên).
   - **Mở**: mật khẩu admin Grafana trên cụm hiện sinh ngẫu nhiên trong VM (`/etc/cj-mon/grafana/admin.pw`), không thêm biến vào `data.env` để khỏi đổi CONTRACT.
+  - **Chi phí** (`docs/cost/chi-phi.md`): đơn giá kiểm lại một phần (n2-highmem-4 Singapore ≈ 0,323 USD/giờ, khớp đề xuất; t3.small, NAT, RDS từ trang tổng hợp giá). Cụm chạy ≈ 0,66 USD/giờ; cụm tắt vẫn ≈ 1,2 USD/ngày (đĩa 246 GB pd-balanced + IP static). 3 phương án 24/7: GCP-OpenStack ≈ 14,9 · máy chủ trường ≈ 6,7 · AWS ≈ 5,9 triệu đ/tháng (đề xuất ghi 14,8 / 6,7 / 5,4–6,2, kết luận giữ nguyên). Đĩa/IP/snapshot GCP theo vùng chưa đọc được bảng chính thức, cần Pricing Calculator.
+  - **`scripts/cj-health.sh`**: kiểm container Kolla, `o-hm0`, nova/neutron, 4 stack, máy ACTIVE + số web/worker + AZ, volume in-use, container Swift, LB + amphora + `/healthz` qua `lb_fip`; qua bastion (cần `ssh -A`): replication, hàng đợi, mục tiêu Prometheus, cảnh báo đang bật. Chỉ đọc.
+  - **Báo cáo**: nháp phần C (HM 3, 4, 7, 8, RPO/RTO, lý giải, giới hạn) và khung báo cáo chính (9 mục theo KE_HOACH 14.4, ghi nguồn từng mục).
