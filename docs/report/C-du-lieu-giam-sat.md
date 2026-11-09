@@ -66,7 +66,7 @@ Thêm lớp mạng: `sg-db` chỉ mở 3306 cho `sg-web`, `sg-worker`, `sg-db`. 
 |---|---|---|---|
 | Mất replica | 0 | vài phút | Tạo lại VM replica, nó tự bắt kịp nhờ GTID |
 | Mất VM primary, volume còn | 0 (dữ liệu trên Cinder) | ~5 phút | Tạo lại VM (Heat), gắn lại volume |
-| Mất primary cả volume | độ trễ nhân bản (thường < 1 giây) ⏳ | ~10–15 phút, **làm tay** | Nâng replica lên primary (`STOP REPLICA; RESET REPLICA ALL; SET GLOBAL super_read_only=OFF`), đổi IP/cấu hình app |
+| Mất primary cả volume | độ trễ nhân bản (đo local: trung vị 6 ms, max 11 ms) | ~10–15 phút, **làm tay** | Nâng replica lên primary (`STOP REPLICA; RESET REPLICA ALL; SET GLOBAL super_read_only=OFF`), đổi IP/cấu hình app |
 | Lỗi logic (xóa nhầm dữ liệu) | ≤ 24 giờ | ~5 phút | `restore-mysql.sh` từ bản backup đêm trước (replica cũng nhận lệnh xóa nên không cứu được) |
 
 Không có **tự động failover** (không Orchestrator/Group Replication), nêu ở mục Giới hạn.
@@ -74,7 +74,7 @@ Không có **tự động failover** (không Orchestrator/Group Replication), n�
 ### 3.5. Vì sao không dùng Trove
 Trove (DBaaS của OpenStack) cần thêm image guest riêng, guest agent, message bus. Rủi ro cao trong 3 tuần mà phải dựng cả OpenStack. Tự dựng MySQL trong VM bằng Heat cũng cho thấy rõ cơ chế nhân bản, quyền và backup, đúng mục tiêu học.
 
-Minh chứng ⏳: `bash db/test-replication.sh` (ghi ở primary → đọc thấy ở replica sau ~… giây; ghi vào replica bị từ chối `ERROR 1290 … super-read-only`; `SHOW REPLICA STATUS` có `Replica_IO_Running: Yes`, `Replica_SQL_Running: Yes`); `restore-mysql.sh latest` trên cụm.
+Minh chứng (local, `docs/evidence/C-local-replication.txt`; cụm ⏳): `bash db/test-replication.sh` (ghi ở primary → đọc thấy ở replica sau ~1 giây theo đồng hồ của script, độ trễ thật đo trong MySQL ~6 ms; ghi vào replica bị từ chối `ERROR 1290 … super-read-only`; `SHOW REPLICA STATUS` có `Replica_IO_Running: Yes`, `Replica_SQL_Running: Yes`); `restore-mysql.sh latest` trên cụm.
 
 ## 4. Hạng mục 7 – Giám sát có cảnh báo
 
@@ -103,7 +103,9 @@ Alertmanager định tuyến theo nhãn `action`: `worker_up` → `POST` vào `a
 ### 4.4. Email và dashboard
 - Email qua Gmail cổng **587** (GCE chặn cổng 25) bằng App Password; tiêu đề `[CloudJudge] FIRING: QueueHigh (warning)`, có thư `RESOLVED` khi hết.
 - Grafana: hàng 1 cho phần demo co giãn (bài đang chờ, số worker, số web, bài chờ lâu nhất, bài nhận/chấm mỗi phút); hàng 2 chấm bài (p50/p95 thời gian chấm, cảnh báo đang bật); hàng 3 hạ tầng (CPU/RAM theo máy, trạng thái mục tiêu, replication, tuổi bản backup, truy vấn MySQL).
-- Minh chứng ⏳: ảnh Grafana lúc chạy loadtest 60 bài; ảnh hộp thư có `QueueHigh` / `SubmissionStuck`; `openstack stack resource list -n 2 cj-app` thấy worker 1 → 2 → 3 → 1.
+- Đã chạy thật ở local (`docs/evidence/C-local-monitoring.txt`): thư thử và thư `ReplicationBroken` tới Gmail; `ACTION=worker_up` gọi đúng URL. Khi thử cắt luồng nhân bản (`STOP REPLICA SQL_THREAD`): pending sau ~10 s, firing sau ~72 s (`for: 1m`), tự hết ~11 s sau khi nối lại (`docs/evidence/C-local-replication-broken.txt`).
+- Gặp khi chạy local: phần mềm diệt virus quét thư (Avast Mail Shield) ký lại TLS của `smtp.gmail.com` → Alertmanager báo `x509: certificate signed by unknown authority`. Cách xử lý là cho container tin thêm CA đó (`monitoring/docker-compose.local-ca.yml`), **không tắt kiểm tra TLS**. Trên cụm không có lớp chặn này.
+- Minh chứng cụm ⏳: ảnh Grafana lúc chạy loadtest 60 bài; ảnh hộp thư có `QueueHigh` / `SubmissionStuck`; `openstack stack resource list -n 2 cj-app` thấy worker 1 → 2 → 3 → 1.
 
 ## 5. Hạng mục 8 – Chi phí
 Chi tiết, cách tính và nguồn giá: [`docs/cost/chi-phi.md`](../cost/chi-phi.md).
@@ -136,12 +138,16 @@ Chi phí thật của dự án ⏳ (ảnh Billing): dự kiến ≈ 130 USD ≈ 
 - Kết nối MySQL và nhân bản **không mã hóa** (chỉ trong `net-data`); mật khẩu nhân bản trao đổi qua RSA (`GET_SOURCE_PUBLIC_KEY`).
 - Secret nằm trong file trên controller và trong user_data của VM (chưa dùng Barbican/Vault).
 
-## 8. Kết quả đo ⏳
-| Đo | Kết quả |
-|---|---|
-| Độ trễ nhân bản (ghi primary → thấy ở replica) | … |
-| Thời gian backup / kích thước bản dump | … |
-| Thời gian restore | … |
-| QueueHigh firing → email tới | … |
-| QueueHigh firing → worker mới nhận bài | … (B đo phần Heat: alarm_url → worker sẵn sàng 70 s) |
-| QueueIdle → còn 1 worker | … |
+## 8. Kết quả đo
+Local: Docker Desktop (WSL2) trên laptop, MySQL 8.4 primary + replica, CSDL mẫu 200 user, 5 bài, 50 000 bài nộp (submissions ~14,6 MB). Số liệu gốc: `docs/evidence/C-local-timings.txt`.
+
+| Đo | Local | Cụm ⏳ |
+|---|---|---|
+| Độ trễ nhân bản (commit ở primary → áp dụng xong ở replica, `performance_schema`, 20 lần) | trung vị 6,4 ms, max 11,2 ms | |
+| Nạp 50 000 dòng ở primary → replica bắt kịp | 1,3 s + 1,1 s | |
+| Thời gian backup / kích thước bản dump (gzip -9) | 1,0 s / 0,6 MB | |
+| Thời gian restore (primary) → replica khớp lại | 3,2 s → +0,9 s | |
+| Cảnh báo → Gmail nhận thư (gồm `group_wait` 10 s) | 10,5 s | |
+| ReplicationBroken: luồng nhân bản dừng → firing (`for: 1m`) | ~72 s | |
+| QueueHigh firing → worker mới nhận bài | (cần app + Heat) | … (B đo phần Heat: alarm_url → worker sẵn sàng 70 s) |
+| QueueIdle → còn 1 worker | (cần app + Heat) | … |

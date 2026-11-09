@@ -73,6 +73,11 @@ docs/cost/
 - [ ] Báo cáo ghép + PDF
 
 ## Nhật ký
+- 10/11 (C, local, đợt 2, chờ A): **Đối chiếu metric**: `cj_submissions_total`, `cj_pending_submissions`, `cj_oldest_pending_seconds` (web), `cj_graded_total`, `cj_grade_duration_seconds` (worker) trong `origin/b/app-phase1` khớp CONTRACT 9 + luật + dashboard. RabbitMQ 4.1 + `monitoring/rabbitmq/` chạy thử: `rabbitmq_queue_messages_ready / _unacked / rabbitmq_queue_messages{queue="submissions"}` đúng tên (12 tin → ready=12, QueueHigh sẽ firing). Không phải sửa gì.
+  - **Số đo local** (`docs/evidence/C-local-timings.txt`, CSDL mẫu 200 user / 5 bài / 50 000 bài nộp ~14,6 MB): độ trễ nhân bản đo trong MySQL (`performance_schema`, END_APPLY − ORIGINAL_COMMIT) trung vị 6,4 ms, max 11,2 ms; backup 1,0 s / 0,6 MB; restore 3,2 s, replica khớp thêm 0,9 s; cảnh báo → Gmail 10,5 s (gồm group_wait 10 s). Đo từ ngoài qua `docker exec` ra ~300 ms là do chi phí gọi lệnh trên Windows, không dùng. Đã điền vào `docs/report/C-du-lieu-giam-sat.md` mục 8 (cột cụm để trống).
+  - **Sức chứa sau khi A đặt `disk_allocation_ratio = 2.0`**: mỗi compute 90 GB sổ sách. compute-1 (az1) = 45 + cj-mon 20 = 65; compute-2 (az2) = 45 + replica 20 = 65. Còn 25 + 25 GB cho scale out: 2 worker (2×20) + 1 web (10) là vừa khít; demo scale tối đa mà thiếu thì đề nghị A nâng lên 3.0.
+  - 2 VM GCP cũ `compute` (custom-4-8192) và `controller` (custom-2-6144), zone b: tạo 23/09, tắt từ 28/09, đĩa 30 GB pd-standard mỗi cái (~3 USD/tháng). Không có trong script nào của repo. Chờ nhóm xác nhận rồi mới xóa.
+  - Tắt container local (giữ image 2,8 GB + volume MySQL 0,5 GB trên D).
 - 10/11 (C, local): Docker Desktop 29.9.3 cài ở ổ D (`--installation-dir=D:\Docker\App --wsl-default-data-root=D:\Docker\Data`).
   - `monitoring/check.sh`: promtool check config (cụm + local), check rules (9), test rules, amtool, dashboard JSON (20 panel): **TẤT CẢ OK**.
   - `db/local-up.sh`: primary + replica + 2 exporter, schema + user, replication (GTID, auto position), backup → restore OK. Replica có GTID riêng `…:1-5` (giao dịch của entrypoint lúc khởi tạo, trước khi bật super_read_only); vô hại khi chỉ đọc, ghi lại để biết nếu có lúc phải đổi vai.
