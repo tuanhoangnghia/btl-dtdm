@@ -1,0 +1,76 @@
+# Giám sát chạy local bằng Docker, 2026-11-09T18:40:53Z
+## bash monitoring/check.sh
+== promtool check config (cụm)
+Checking out/prometheus.check.yml
+  SUCCESS: 1 rule files found
+ SUCCESS: out/prometheus.check.yml is valid prometheus config file syntax
+
+Checking out/rules.yml
+  SUCCESS: 9 rules found
+
+== promtool check config (local)
+Checking out/prometheus.local.check.yml
+  SUCCESS: 1 rule files found
+ SUCCESS: out/prometheus.local.check.yml is valid prometheus config file syntax
+
+Checking out/rules.yml
+  SUCCESS: 9 rules found
+
+== promtool check rules
+Checking rules.yml
+  SUCCESS: 9 rules found
+
+== promtool test rules
+  SUCCESS
+
+== amtool check-config
+Checking 'out/alertmanager.yml'  SUCCESS
+Found:
+ - global config
+ - route
+ - 1 inhibit rules
+ - 5 receivers
+ - 0 templates
+
+== dashboard JSON
+OK 20 panel
+TẤT CẢ OK
+
+## Prometheus targets (web/worker/rabbitmq down vì app của B không chạy ở local)
+  alertmanager local-monitor up
+  mysql local-mysql-primary up
+  mysql local-mysql-replica up
+  prometheus local-monitor up
+  rabbitmq local-rabbitmq down
+  web local-web down
+  worker local-worker down
+## Luật
+  SubmissionStuck inactive ok
+  InstanceDown firing ok
+  MySQLDown inactive ok
+  ReplicationBroken inactive ok
+  BackupStale inactive ok
+  QueueHigh inactive ok
+  QueueIdle inactive ok
+  WebCPUHigh inactive ok
+  WebCPULow inactive ok
+## Metric replication của mysqld-exporter v0.16.0 với MySQL 8.4 (replica)
+mysql_slave_status_replica_io_running{...} 1
+mysql_slave_status_replica_sql_running{...} 1
+mysql_slave_status_seconds_behind_source{...} 0
+## Alertmanager: send-test-alert.sh (email qua smtp.gmail.com:587) + ACTION=worker_up (webhook)
+alertmanager_notifications_failed_total{integration="email",reason="clientError"} 0
+alertmanager_notifications_failed_total{integration="email",reason="contextCanceled"} 0
+alertmanager_notifications_failed_total{integration="email",reason="contextDeadlineExceeded"} 0
+alertmanager_notifications_failed_total{integration="email",reason="other"} 0
+alertmanager_notifications_failed_total{integration="email",reason="serverError"} 0
+alertmanager_notifications_failed_total{integration="webhook",reason="clientError"} 0
+alertmanager_notifications_failed_total{integration="webhook",reason="contextCanceled"} 0
+alertmanager_notifications_failed_total{integration="webhook",reason="contextDeadlineExceeded"} 0
+alertmanager_notifications_failed_total{integration="webhook",reason="other"} 0
+alertmanager_notifications_failed_total{integration="webhook",reason="serverError"} 0
+alertmanager_notifications_total{integration="email"} 6
+alertmanager_notifications_total{integration="webhook"} 2
+## webhook-echo (đóng vai alarm_url của Heat)
+18:38:23 POST /worker_up alerts=['CloudJudgeScaleTest']
+18:40:23 POST /worker_up alerts=['CloudJudgeScaleTest']

@@ -59,10 +59,10 @@ docs/cost/
 
 ## Tiến độ
 - [x] Schema chốt với B (B viết app khớp `db/schema.sql` v1, không cần đổi)
-- [ ] Replication local: đã viết `db/docker-compose.repl.yml` + `local-up.sh`, **chưa chạy** (laptop chưa có Docker)
-- [ ] Backup/restore local: đã viết `backup-mysql.sh` / `restore-mysql.sh` (local ghi ra thư mục), **chưa chạy**
-- [ ] Monitoring local + email thật: đã viết `monitoring/` + `local-up.sh` + `send-test-alert.sh`, **chưa chạy** (cần Docker + Gmail App Password)
-- [ ] Rules + dashboard: 6 luật kế hoạch + 3 luật dữ liệu, unit test promtool, dashboard 20 panel; **chưa chạy `check.sh`** (cần Docker)
+- [x] Replication local: `db/local-up.sh` chạy OK 10/11 (replica thấy bản ghi sau ~1 s, từ chối ghi) → `docs/evidence/C-local-replication.txt`
+- [x] Backup/restore local: chạy OK 10/11 trong `db/local-up.sh` (backup → restore vào primary, replication vẫn chạy); bản Swift chưa thử
+- [x] Monitoring local + email thật: 10/11 thư thử tới Gmail OK, alarm_url (webhook) OK, ReplicationBroken firing sau ~72 s rồi tự hết → `docs/evidence/C-local-monitoring.txt`, `C-local-replication-broken.txt`
+- [x] Rules + dashboard: 6 luật kế hoạch + 3 luật dữ liệu, unit test promtool, dashboard 20 panel; `check.sh` TẤT CẢ OK 10/11; tên metric replication đã xác minh (khớp)
 - [ ] Bảng chi phí: bản nháp `docs/cost/chi-phi.md` (3 phương án tính lại: 14,9 / 6,7 / 5,9 triệu đ/tháng); còn kiểm lại bằng Pricing Calculator + số thật từ Billing
 - [ ] `scripts/cj-health.sh`: đã viết, chưa chạy trên cụm
 - [ ] Báo cáo: nháp phần C `docs/report/C-du-lieu-giam-sat.md` + khung báo cáo chính `docs/report/bao-cao.md`; còn số liệu đo, ảnh
@@ -73,6 +73,14 @@ docs/cost/
 - [ ] Báo cáo ghép + PDF
 
 ## Nhật ký
+- 10/11 (C, local): Docker Desktop 29.9.3 cài ở ổ D (`--installation-dir=D:\Docker\App --wsl-default-data-root=D:\Docker\Data`).
+  - `monitoring/check.sh`: promtool check config (cụm + local), check rules (9), test rules, amtool, dashboard JSON (20 panel): **TẤT CẢ OK**.
+  - `db/local-up.sh`: primary + replica + 2 exporter, schema + user, replication (GTID, auto position), backup → restore OK. Replica có GTID riêng `…:1-5` (giao dịch của entrypoint lúc khởi tạo, trước khi bật super_read_only); vô hại khi chỉ đọc, ghi lại để biết nếu có lúc phải đổi vai.
+  - **Tên metric đã xác minh** (mysqld-exporter v0.16.0 + MySQL 8.4): `mysql_slave_status_replica_io_running`, `…_replica_sql_running`, `…_seconds_behind_source`, khớp luật + dashboard, không phải sửa.
+  - `monitoring/local-up.sh` sửa 2 lỗi gặp khi chạy thật: (1) `local.env` lưu CRLF + App Password có khoảng trắng làm `source` hỏng → đọc từng dòng KEY=giá trị; (2) **Avast Mail Shield ký lại TLS của smtp.gmail.com** → Alertmanager `x509: certificate signed by unknown authority` → local-up ghép CA của Avast (hoặc `EXTRA_CA_FILE`) vào bundle của container qua `docker-compose.local-ca.yml` (không tắt kiểm TLS; cụm không bị ảnh hưởng).
+  - Email thật: `send-test-alert.sh` → Gmail (mail phụ của C), `alertmanager_notifications_total{integration="email"}` tăng, 0 lỗi. `ACTION=worker_up` → webhook-echo nhận `POST /worker_up`.
+  - ReplicationBroken: `STOP REPLICA SQL_THREAD` → pending ~10 s, firing ~72 s (for 1m), Alertmanager gửi thư; `START` lại → hết sau ~11 s.
+  - InstanceDown kêu cho web/worker/rabbitmq vì app của B không chạy local (đúng).
 - 10/11 (C): Tuấn đã cài key; `ssh cj-controller` OK (user `trong`, group `cj`, sudo, có `clouds.yaml`). Host key controller chưa có trong known_hosts, GCP không có guest attribute `hostkeys/` → đối chiếu ED25519 qua 2 đường (Tailscale 100.98.68.95 và IP công khai 34.124.240.64) cùng `SHA256:1g8edsO7vsbfi+EntIHqhtkcr7NW4EuBSZGe300VZYI` rồi mới nhận. Clone `c/data-mon` vào `~/cloudjudge` của `trong`. `data.env`/`infra.env` đủ biến cho cj-data (chưa có SMTP_*).
   - `deploy-cj-data.sh` (log `~/logs/deploy-cj-data.log` trên controller): `cj-mysql-primary` (az1) và `cj-rabbitmq` (az2) ACTIVE + **CJ_DATA_READY**; `cj-mysql-replica` (az2, cj.medium 20 GB) **ERROR "No valid host"** 6 lần → stack `cj-data` CREATE_FAILED. Scheduler: "Got no allocation candidates from the Placement API". Placement: mỗi compute VCPU 4/16, RAM ~5/14 GB, **DISK_GB 45/45** (compute-2 = rabbitmq 10 + amphora 5 + worker 20 + web 10; compute-1 = primary 20 + amphora 5 + web 10 + bastion 10). `nova.conf` của A không đặt `disk_allocation_ratio` (mặc định 1.0). Cinder LVM chỉ còn 2,4 GB nên boot từ volume không phải lối thoát. cj-mon (máy monitor) sẽ vướng y hệt.
   - Đã nhắn A: thêm `disk_allocation_ratio = 2.0` vào `infra/kolla/config/nova.conf` + `kolla-ansible reconfigure -t nova`. Sau đó C chạy lại `deploy-cj-data.sh` (update stack), rồi `test-replication.sh`. B dùng được Primary + MQ ngay; chỉ `/scoreboard` (đọc Replica) chưa chạy.

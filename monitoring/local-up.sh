@@ -23,8 +23,22 @@ bash check.sh
 WEB_UP_URL=http://webhook-echo:9999/web_up WEB_DOWN_URL=http://webhook-echo:9999/web_down \
 WORKER_UP_URL=http://webhook-echo:9999/worker_up WORKER_DOWN_URL=http://webhook-echo:9999/worker_down \
 SKIP_PROMETHEUS=1 bash render.sh .local
-docker compose -f docker-compose.local.yml up -d
-docker compose -f docker-compose.local.yml restart alertmanager >/dev/null   # nạp lại nếu local.env vừa đổi
+
+# Phần mềm diệt virus quét thư (vd Avast Mail Shield) ký lại TLS của smtp.gmail.com bằng CA riêng → Alertmanager báo
+# "x509: certificate signed by unknown authority". Chỉ ở local: ghép CA đó vào bundle của container (không tắt kiểm TLS).
+#   EXTRA_CA_FILE=<đường dẫn .pem> trong local.env để chỉ định; mặc định tự dùng CA của Avast nếu có.
+COMPOSE=(-f docker-compose.local.yml)
+AVAST_CA="/c/ProgramData/Avast Software/Avast/wscert.pem"
+[ -z "${EXTRA_CA_FILE:-}" ] && [ -f "$AVAST_CA" ] && EXTRA_CA_FILE=$AVAST_CA
+if [ -n "${EXTRA_CA_FILE:-}" ]; then
+  [ -f "$EXTRA_CA_FILE" ] || { echo "Không thấy EXTRA_CA_FILE=$EXTRA_CA_FILE" >&2; exit 1; }
+  { MSYS_NO_PATHCONV=1 docker run --rm --entrypoint cat prom/alertmanager:v0.27.0 /etc/ssl/certs/ca-certificates.crt
+    echo; tr -d '\r' < "$EXTRA_CA_FILE"; } > .local/ca-bundle.crt
+  COMPOSE+=(-f docker-compose.local-ca.yml)
+  echo "Alertmanager tin thêm CA: $EXTRA_CA_FILE"
+fi
+docker compose "${COMPOSE[@]}" up -d
+docker compose "${COMPOSE[@]}" restart alertmanager >/dev/null   # nạp lại nếu local.env vừa đổi
 
 echo
 echo "Prometheus   http://127.0.0.1:9090/targets"
