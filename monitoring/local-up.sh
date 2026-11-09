@@ -8,7 +8,15 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 [ -f local.env ] || { echo "Chưa có monitoring/local.env (chép từ local.env.example rồi điền)" >&2; exit 1; }
-set -a; . <(tr -d '\r' < local.env); set +a   # bỏ \r: file sửa trên Windows hay lưu CRLF
+# Đọc KEY=giá trị từng dòng thay vì source: App Password có khoảng trắng, file sửa trên Windows hay có \r
+while IFS= read -r line || [ -n "$line" ]; do
+  line=${line%$'\r'}
+  [[ $line =~ ^[[:space:]]*(#|$) ]] && continue
+  [[ $line =~ ^([A-Z_][A-Z0-9_]*)=(.*)$ ]] || { echo "local.env: bỏ qua dòng không đúng dạng KEY=giá trị" >&2; continue; }
+  k=${BASH_REMATCH[1]}; v=${BASH_REMATCH[2]}
+  [[ $v =~ ^\"(.*)\"$ || $v =~ ^\'(.*)\'$ ]] && v=${BASH_REMATCH[1]}
+  export "$k=$v"
+done < local.env
 
 bash check.sh
 # local: alarm_url là webhook-echo (in ra thay vì gọi Heat)
