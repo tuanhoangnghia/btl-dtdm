@@ -8,7 +8,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 [ -f local.env ] || { echo "Chưa có monitoring/local.env (chép từ local.env.example rồi điền)" >&2; exit 1; }
-set -a; . ./local.env; set +a
+set -a; . <(tr -d '\r' < local.env); set +a   # bỏ \r: file sửa trên Windows hay lưu CRLF
 
 bash check.sh
 # local: alarm_url là webhook-echo (in ra thay vì gọi Heat)
