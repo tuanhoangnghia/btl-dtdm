@@ -1,0 +1,13 @@
+# Minh chứng chịu lỗi LB (09/11/2026): dừng amphora MASTER của cj-lb, đo gián đoạn.
+# LB cj-lb: ACTIVE_STANDBY, MASTER và BACKUP ở 2 AZ khác nhau. Thăm dò http://172.24.4.64/healthz (floating IP của LB) mỗi 0,25 giây, timeout 1 giây.
+# Lưu ý: mã 503 là do backend web chưa có CSDL (cj-data chưa dựng), tức là chính LB trả lời; mục đích test là phần data plane của LB còn sống.
+# Mã 000 = không có phản hồi trong 1 giây.
+MASTER amphora=1bda1836-c86b-4ef2-902d-05f5b7c62376 vm=e3498312-f908-47f3-8798-67c12f9636f7; BACKUP amphora=d4c0d816-c266-4548-a2c9-a5479b15ae62 vm=892bbe2a-79ba-49c3-8d4e-18a9e1785ec0
+amphora-1bda1836-c86b-4ef2-902d-05f5b7c62376 az2
+amphora-d4c0d816-c266-4548-a2c9-a5479b15ae62 az1
+15:19:24.033 STOP MASTER
+--- phản hồi theo thời gian (rút gọn: chỉ in khi mã đổi)
+15:19:16.033 503
+15:19:27.669 000
+15:19:28.932 503
+--- số lần 000 (mất kết nối): 1 / 240 lần thử

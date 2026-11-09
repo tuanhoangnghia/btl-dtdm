@@ -54,6 +54,7 @@
 | MTU tenant / ping chéo AZ gói 1400B | 1450 / đạt |
 | LB Octavia ACTIVE_STANDBY | MASTER + BACKUP ở 2 host khác nhau |
 | Cụm tự khởi động lại sau khi tắt/bật | đạt (sau khi sửa `octavia-interface`) |
+| Dừng amphora MASTER khi LB đang nhận request (`A-amphora-failover.txt`) | BACKUP (AZ còn lại) nhận VIP: **1/240 lần thăm dò thất bại** (mỗi 0,25 giây, timeout 1 giây), phục hồi sau khoảng 4–5 giây kể từ lệnh dừng |
 
 ## 6. Giới hạn và rủi ro đã biết (cho mục Giới hạn của báo cáo)
 - **Controller là điểm lỗi đơn** (1 node chạy API, DB, Swift, router). Hỏng thì cả cụm dừng.
@@ -65,3 +66,10 @@
 
 ## 7. Những lỗi gặp khi dựng và cách xử lý (bài học)
 Xem Nhật ký 29/10 trong `docs/tasks/A-ha-tang.md`: image 2024.2 bị gỡ, Swift bị bỏ khỏi Kolla, ProxySQL chiếm cổng 3306, thiếu `dhclient` cho Octavia, `octavia-interface` chạy quá sớm sau reboot, IP nhà đổi làm SSH bị chặn.
+
+## 8. Giới hạn của Octavia trên cụm 2 compute (phát hiện 09/11)
+- Octavia đặt 2 amphora vào server group **anti-affinity cứng**. Cụm chỉ có 2 compute nên khi một amphora hỏng, amphora thay thế **không có host để đặt** (`ServerGroupAntiAffinityFilter returned 0 hosts`) và LB chuyển sang `ERROR`. Lưu lượng vẫn được BACKUP phục vụ, nhưng LB không tự hồi phục.
+- Sau khi bật lại cụm nguội (compute chưa lên), lần failover tự động đầu tiên của health manager cũng thất bại (`ComputeFilter returned 0 hosts`) và để lại LB ở `ERROR`.
+- Cách khôi phục đã dùng: xóa VM của các amphora đã `ERROR` rồi chạy `openstack loadbalancer failover cj-lb` (mất khoảng 160 giây, LB về `ACTIVE`, MASTER/BACKUP ở 2 AZ).
+- Hướng cải thiện: `anti_affinity_policy = soft-anti-affinity` trong `octavia.conf` (chỉ áp cho LB tạo sau đó) hoặc thêm một compute.
+
