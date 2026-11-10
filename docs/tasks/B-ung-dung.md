@@ -74,6 +74,7 @@ image/
 - [ ] Báo cáo phần B (đã có nháp `docs/report/B-ung-dung.md`, còn thiếu số liệu đo)
 
 ## Nhật ký
+- 10/11 tối (B): `/metrics` mở công khai qua LB. Chặn trong app theo IP nguồn: request đi qua amphora (net-public 10.0.1.0/24) nhận 403, Prometheus gọi thẳng từ net-app vẫn đọc được. Không dùng L7 policy của Octavia vì HAProxy so khớp đường dẫn thô, `/%6detrics` lọt qua. Code đã push, **chưa phát hành** (C đang giữ khóa); phát hành 0.1.6 rồi kiểm `curl http://<CTL_IP>/metrics` phải ra 403.
 - 10/11 tối (B): A đã sửa `cj-lb` (`cj-post-boot.service`). Phát hành 0.1.4 rồi 0.1.5 (`docs/evidence/B-cum-10-11.txt` mục 6–9).
   - **Consumer ma khi scale in**: Heat xóa VM không đóng TCP và không có SIGTERM, trong khi heartbeat 300 s nên RabbitMQ vẫn giao bài cho máy đã chết, bài kẹt nhiều phút (`consumers=3` khi chỉ còn 1 worker). Sửa: chấm bài ở luồng riêng, ack bằng `add_callback_threadsafe`, heartbeat 30 s. Đo lại: bài rơi vào máy đã chết được giao lại sau ~92 s, 6/6 ACCEPTED.
   - **Cooldown**: `worker_up` gửi lúc Heat còn cooldown vẫn trả HTTP 200 nhưng bị bỏ qua (log heat-engine: `is in cooldown (60)`). Cooldown tính từ lúc thêm máy xong, nên hai lần scale phải cách nhau hơn ~85 s.

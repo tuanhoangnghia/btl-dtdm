@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import functools
+import ipaddress
 import logging
 
 from flask import Blueprint, Response, abort, flash, jsonify, redirect, render_template, request, session, url_for
@@ -17,6 +18,7 @@ log = logging.getLogger(__name__)
 bp = Blueprint("web", __name__)
 
 S, P, U = db.submissions, db.problems, db.users
+LB_SUBNET = ipaddress.ip_network("10.0.1.0/24")      # net-public (CONTRACT): amphora của Octavia
 
 
 def login_required(view):
@@ -228,5 +230,9 @@ def healthz():
 
 @bp.get("/metrics")
 def prometheus_metrics():
+    # Prometheus gọi thẳng web :8000 từ net-app; request từ Internet đi qua amphora nên có IP nguồn ở net-public.
+    # Chặn theo IP chứ không bằng L7 policy của Octavia: HAProxy so khớp đường dẫn thô, /%6detrics sẽ lọt qua.
+    if ipaddress.ip_address(request.remote_addr) in LB_SUBNET:
+        abort(403)
     body, ctype = metrics.render(services().primary)
     return Response(body, content_type=ctype)

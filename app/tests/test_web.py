@@ -112,6 +112,11 @@ def test_api_validation(client):
     assert client.post("/api/submit", json={"problem": "a-plus-b", "language": "cpp", "source": "  "}, headers=h).status_code == 400
 
 
+def test_metrics_hidden_from_load_balancer_traffic(client, seeded):
+    assert client.get("/metrics", environ_base={"REMOTE_ADDR": "10.0.1.73"}).status_code == 403
+    assert client.get("/metrics", environ_base={"REMOTE_ADDR": "10.0.2.11"}).status_code == 200
+
+
 def test_metrics(client, seeded):
     client.post("/api/submit", json={"problem": "a-plus-b", "language": "cpp", "source": "int main(){}"},
                 headers={"X-API-Token": TOKEN})
