@@ -2,7 +2,7 @@
 
 > Hạng mục phụ trách: **6** (cân bằng tải, tự mở rộng, chịu lỗi tầng ứng dụng); phần ứng dụng dùng cho HM 3, 4, 5, 7.
 > Mã: `app/`, `image/`, `heat/cj-app.yaml` + 2 template con, `scripts/release.sh`, `scripts/loadtest.py`.
-> **Còn thiếu:** phần số liệu đo phụ thuộc `cj-data`/`cj-mon` (mục 7) và ảnh chụp. Số liệu đã đo ngày 31/10: `docs/evidence/B-cum-31-10.txt`.
+> **Còn thiếu:** số liệu đo phụ thuộc `cj-mon` (mục 7) và ảnh chụp. Số liệu đã đo: `docs/evidence/B-cum-31-10.txt`, `docs/evidence/B-cum-10-11.txt`.
 
 ## 1. Kiến trúc ứng dụng
 
@@ -76,7 +76,7 @@ Mỗi lần biên dịch và mỗi test chạy trong một container `docker run
 | web_up | `WebCPUHigh`: CPU web > 70% trong 1 phút | 120 s |
 | web_down | `WebCPULow`: CPU web < 20% trong 5 phút và > 2 web | 300 s |
 
-- **Vì sao co giãn worker theo độ dài hàng đợi, không theo CPU:** worker 1 vCPU luôn chạy 100% CPU khi đang chấm, dù hàng đợi có 1 bài hay 100 bài. Độ dài hàng đợi đo đúng "việc còn tồn", và cùng với tốc độ chấm (~7 bài `slow-sum`/phút/worker, đo trên worker) cho biết thời gian chờ.
+- **Vì sao co giãn worker theo độ dài hàng đợi, không theo CPU:** worker 1 vCPU luôn chạy 100% CPU khi đang chấm, dù hàng đợi có 1 bài hay 100 bài. Độ dài hàng đợi đo đúng "việc còn tồn", và cùng với tốc độ chấm (~6 bài `slow-sum`/phút/worker, đo bằng loadtest trên cụm) cho biết thời gian chờ.
 - **Cooldown** chống dao động (flapping): sau mỗi lần scale phải chờ máy mới boot xong và nhận việc thì mới đánh giá lại.
 
 ## 7. Kết quả đo (điền sau khi chạy trên cụm)
@@ -84,7 +84,7 @@ Mỗi lần biên dịch và mỗi test chạy trong một container `docker run
 |---|---|
 | Thời gian chấm 1 bài `a-plus-b` trên worker (gồm biên dịch, chưa gồm hàng đợi) | C++ 6,9 s / Python 3,2 s |
 | Thời gian 1 test `slow-sum` / 1 bài (worker `cj.medium`, 1 vCPU) | ~1,47 s / 8,4 s (≈ 7 bài/phút/worker) |
-| Loadtest 60 bài: chờ trung bình / p95 (1 worker cố định) | _ / _ |
+| Loadtest 60 bài `slow-sum`: chờ trung bình / p95 (1 worker cố định, đo 10/11) | 289 s / 553 s (tổng 588 s, 60/60 ACCEPTED, ~6,1 bài/phút) |
 | Loadtest 60 bài: chờ trung bình / p95 (có autoscale) | _ / _ |
 | Tín hiệu worker_up → server ACTIVE → cài xong, `:9200` OK (đo 31/10, qua API Heat) | 22 s → **77 s** |
 | POST `worker_up` alarm_url → server ACTIVE → cài xong (đo 31/10) | 18 s → **70 s** |
@@ -92,7 +92,8 @@ Mỗi lần biên dịch và mỗi test chạy trong một container `docker run
 | Alert firing → worker mới nhận bài đầu tiên (qua Alertmanager) | _ s (chờ `cj-mon`) |
 | Tín hiệu worker_down → còn 1 worker (đo 31/10) | **15 s** |
 | Hàng đợi rỗng → thu về 1 worker (qua Alertmanager, gồm `for: 1m`) | _ s |
-| Tắt 1 web ở az1 → LB ngừng gửi request tới máy đó | _ s |
+| Tắt 1 web ở az1 → LB ngừng gửi request tới máy đó (đo 10/11, curl mỗi ~0,8 s, timeout 2 s) | ~24 s; trong đó khoảng một nửa request lỗi (9/140 cả lần đo) |
+| Bật lại web az1 → LB gửi request trở lại | 46 s |
 
 ## 8. Kiểm thử
 `app/tests/` (pytest, 32 test, chạy không cần MySQL/RabbitMQ/Swift/Docker): route web và API, CSRF, phân quyền xem bài, `/metrics`, scoreboard đọc replica, giảng viên tạo bài, seed chạy lại được, grader (ACCEPTED, WRONG_ANSWER có điểm một phần, TIME_LIMIT, RUNTIME_ERROR, COMPILE_ERROR), worker idempotent và chấm lại bài `RUNNING`, đủ cờ cách ly của lệnh `docker run`, `cj-run`, và một bài end-to-end: web HTTP thật + worker + `scripts/loadtest.py` nộp 20 bài, chấm đủ 20.

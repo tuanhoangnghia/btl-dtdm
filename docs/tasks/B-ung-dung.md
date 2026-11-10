@@ -64,13 +64,19 @@ image/
 - [x] Image `cj-base-v1` trên cụm (min_disk 10 GB) → **cần báo C**
 - [x] Release trên Swift: dùng **0.1.3** (0.1.0/0.1.1 đóng gói sai quyền, 0.1.2 chưa có bản sửa deadlock sandbox)
 - [x] Stack `cj-app` CREATE/UPDATE_COMPLETE: `lb_fip` 172.24.4.64, web az1 + az2, 1 worker. A đã DNAT :80 (public trả 503 của Octavia vì chưa có member khỏe)
-- [ ] Nộp bài qua IP public ra điểm (**chờ C: `cj-data`**)
-- [ ] Scale worker 1→3→1, số liệu đo: 1→2→1 qua API Heat (77 s / 15 s) và **qua alarm_url (HTTP 200, 70 s / 14 s)** đã đo; theo hàng đợi chờ `cj-data` + `cj-mon`
+- [x] Nộp bài qua IP public ra điểm (10/11): seed xong, 7 lời giải mẫu đúng kết quả, `/scoreboard` đọc replica
+- [ ] Scale worker 1→3→1, số liệu đo: 1→2→1 qua API Heat (77 s / 15 s) và **qua alarm_url (HTTP 200, 70 s / 14 s)** đã đo; theo hàng đợi chờ `cj-mon` (C còn thiếu biến SMTP)
+- [x] Loadtest 60 bài, 1 worker cố định (10/11): 60/60 ACCEPTED, chờ tb 289 s, p95 553 s
 - [x] `slow-sum` đo trên worker thật (`cj.medium`, 1 vCPU): ~1,47 s/test, ~8,4 s/bài → giữ n = 3·10^8
-- [ ] Failover web (chờ `cj-data`: chưa có DB thì /healthz 503, LB không có member khỏe)
+- [x] Failover web (10/11): tắt web az1, gián đoạn ~24 s (khoảng một nửa request lỗi), sau đó az2 phục vụ 100%; bật lại nhận request sau 46 s
+- [ ] Release 0.1.4 (sửa `az: local`): code đã xong, **chưa phát hành vì `cj-lb` đang `provisioning_status=ERROR`**, cập nhật member sẽ lỗi
 - [ ] Báo cáo phần B (đã có nháp `docs/report/B-ung-dung.md`, còn thiếu số liệu đo)
 
 ## Nhật ký
+- 10/11 (B): `cj-data` của C đã chạy, chạy end-to-end trên cụm (`docs/evidence/B-cum-10-11.txt`).
+  - **Seed**: chạy `cj-cli seed` trên `cj-web-f00764a4`. Mật khẩu demo ở `~/b-secrets/seed-demo.env` của `phuong` trên controller (không ghi được vào `/home/cj/secrets`: Permission denied).
+  - **Lỗi `az: local`**: gunicorn lên trước metadata service khi cả cụm vừa bật, `lru_cache` nhớ luôn kết quả lỗi theo từng tiến trình (cùng một máy lúc trả az1 lúc trả local). Sửa: không nhớ kết quả lỗi, thử lại sau 30 s; `Services.instance` đọc lúc request. 33 test qua. Chưa phát hành.
+  - **`cj-lb` ERROR sau khi bật cụm**: amphora mất heartbeat lúc cụm tắt nên health manager tự failover ngay khi bật, nhưng nova-compute của compute-2 chưa lên → `No valid host` → cả 2 amphora và LB thành ERROR. Luồng dữ liệu vẫn chạy (amphora cũ còn sống), nhưng API Octavia không cho đổi member, nên web_up và rolling update của ASG web sẽ lỗi. Scale worker không bị ảnh hưởng. Cần `openstack loadbalancer failover cj-lb` khi cả 2 compute đã up; A nên xem lại quy trình bật cụm.
 - 31/10 khuya (B): A đã xong DNAT, sửa heat-api-cfn, thêm key `phuong` vào bastion.
   - **DNAT**: `curl http://<CTL_IP>/healthz` → 503 do Octavia trả (chưa có web khỏe vì chưa có DB). Đúng.
   - **Bastion**: vào VM bằng `ProxyJump cj-controller → cj@172.24.4.131 → cj@10.0.2.x` (mọi chặng dùng key `cloudjudge`). Worker chạy release 0.1.3, có `cj-sandbox:1`.
