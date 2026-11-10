@@ -8,7 +8,7 @@ Chạy: gunicorn -c deploy/gunicorn.conf.py "cloudjudge.web:create_app()"
 from __future__ import annotations
 
 import secrets
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from flask import Flask, abort, request, session
 
@@ -23,7 +23,11 @@ class Services:
     replica: object
     storage: object
     publisher: object
-    instance: tuple[str, str] = field(default_factory=lambda: ("", ""))
+    fixed_instance: tuple[str, str] | None = None
+
+    @property
+    def instance(self) -> tuple[str, str]:
+        return self.fixed_instance or instance_info()
 
 
 def services() -> Services:
@@ -53,8 +57,7 @@ def create_app(cfg: Config | None = None, *, engines=None, storage=None, publish
         SESSION_COOKIE_SAMESITE="Lax",
         MAX_CONTENT_LENGTH=16 * 1024 * 1024,
     )
-    app.extensions["cj"] = Services(cfg, engines[0], engines[1], storage, publisher,
-                                    instance or instance_info())
+    app.extensions["cj"] = Services(cfg, engines[0], engines[1], storage, publisher, instance)
 
     @app.before_request
     def _csrf():
