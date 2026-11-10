@@ -36,3 +36,28 @@ az: một số tiến trình gunicorn của cj-web-f00764a4 trả "az":"local", 
 cj-lb provisioning_status ERROR sau khi bật cụm, amphora b5051c27 + 9ea2f7fb status ERROR:
   octavia-worker.log 11:43:10 ComputeBuildException ... No valid host was found (nova-compute os-compute-2 còn down lúc đó)
   Đường dữ liệu vẫn chạy. Chưa xử lý.
+
+=== 6. Sau khi A sửa cj-lb (cj-post-boot.service): provisioning_status ACTIVE, 2 amphora ALLOCATED ===
+Release 0.1.4 (deploy 13:17:33 -> 13:20:36), curl /healthz qua IP public mỗi ~1 s trong lúc thay máy:
+135 lần: 133 HTTP 200, 2 timeout 3 s (13:19:03, 13:19:23). Máy mới báo đúng az1 / az2.
+
+=== 7. Scale qua alarm_url (release 0.1.4) ===
+13:38:18 POST worker_up -> 200, 13:38:25 có 2 worker (7 s)
+13:40:00 POST worker_up -> 200, 13:40:08 có 3 worker (7 s): az1, az1, az2; cả 3 có CJ_INSTALL_DONE
+13:41:54 POST worker_down -> 200, 13:42:07 còn 2 (12 s)
+13:43:42 POST worker_down -> 200, 13:43:54 còn 1 (12 s)
+13:31:42 POST web_up -> 200, 13:31:55 pool có 3 member ONLINE (trạng thái API; chưa đo lúc máy mới phục vụ được)
+13:37:09 POST web_down -> 200, 13:37:21 còn 2 member
+Lần thử trước: POST worker_up lúc 13:25:47 -> 200 nhưng không thêm máy.
+heat-engine.log 20:25:49 (giờ VN): Can not perform scaling action: resource worker_asg is in cooldown (60).
+
+=== 8. Consumer ma khi scale in (release 0.1.4, heartbeat 300 s) ===
+Sau 13:43:54 chỉ còn 1 worker nhưng rabbitmqctl list_queues: messages_ready 0, unacked 2, consumers 3.
+Nộp 2 bài: 0/2 có kết quả trong 120 s (bài được giao cho consumer của VM đã bị xóa).
+
+=== 9. Release 0.1.5 (chấm ở luồng riêng, heartbeat 30 s), đo lại ===
+13:56:07 POST worker_down (xóa cj-worker-3db3bf8d), ngay sau đó nộp 6 bài a-plus-b:
+6/6 ACCEPTED, tất cả ở cj-worker-8e743e60, chờ tb 25.8 s, max 91.6 s
+13:57:46 consumers giảm từ 3 xuống 2
+14:01:23 ready 0, unacked 0, consumers 1 (consumer cuối là tiến trình bản 0.1.4 heartbeat 300 s, tự hết)
+cj_pending_submissions 0, cj_oldest_pending_seconds 0

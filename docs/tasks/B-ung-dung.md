@@ -69,10 +69,14 @@ image/
 - [x] Loadtest 60 bài, 1 worker cố định (10/11): 60/60 ACCEPTED, chờ tb 289 s, p95 553 s
 - [x] `slow-sum` đo trên worker thật (`cj.medium`, 1 vCPU): ~1,47 s/test, ~8,4 s/bài → giữ n = 3·10^8
 - [x] Failover web (10/11): tắt web az1, gián đoạn ~24 s (khoảng một nửa request lỗi), sau đó az2 phục vụ 100%; bật lại nhận request sau 46 s
-- [ ] Release 0.1.4 (sửa `az: local`): code đã xong, **chưa phát hành vì `cj-lb` đang `provisioning_status=ERROR`**, cập nhật member sẽ lỗi
+- [x] Release **0.1.5** đang chạy trên cụm (sửa `az: local`, worker heartbeat 30 s). A đã sửa `cj-lb`, rolling update chạy được
+- [x] Scale qua alarm_url (10/11): worker 1→3→1, web 2→3→2
 - [ ] Báo cáo phần B (đã có nháp `docs/report/B-ung-dung.md`, còn thiếu số liệu đo)
 
 ## Nhật ký
+- 10/11 tối (B): A đã sửa `cj-lb` (`cj-post-boot.service`). Phát hành 0.1.4 rồi 0.1.5 (`docs/evidence/B-cum-10-11.txt` mục 6–9).
+  - **Consumer ma khi scale in**: Heat xóa VM không đóng TCP và không có SIGTERM, trong khi heartbeat 300 s nên RabbitMQ vẫn giao bài cho máy đã chết, bài kẹt nhiều phút (`consumers=3` khi chỉ còn 1 worker). Sửa: chấm bài ở luồng riêng, ack bằng `add_callback_threadsafe`, heartbeat 30 s. Đo lại: bài rơi vào máy đã chết được giao lại sau ~92 s, 6/6 ACCEPTED.
+  - **Cooldown**: `worker_up` gửi lúc Heat còn cooldown vẫn trả HTTP 200 nhưng bị bỏ qua (log heat-engine: `is in cooldown (60)`). Cooldown tính từ lúc thêm máy xong, nên hai lần scale phải cách nhau hơn ~85 s.
 - 10/11 (B): `cj-data` của C đã chạy, chạy end-to-end trên cụm (`docs/evidence/B-cum-10-11.txt`).
   - **Seed**: chạy `cj-cli seed` trên `cj-web-f00764a4`. Mật khẩu demo ở `~/b-secrets/seed-demo.env` của `phuong` trên controller (không ghi được vào `/home/cj/secrets`: Permission denied).
   - **Lỗi `az: local`**: gunicorn lên trước metadata service khi cả cụm vừa bật, `lru_cache` nhớ luôn kết quả lỗi theo từng tiến trình (cùng một máy lúc trả az1 lúc trả local). Sửa: không nhớ kết quả lỗi, thử lại sau 30 s; `Services.instance` đọc lúc request. 33 test qua. Chưa phát hành.

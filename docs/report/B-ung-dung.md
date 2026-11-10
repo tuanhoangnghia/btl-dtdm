@@ -60,7 +60,7 @@ Mỗi lần biên dịch và mỗi test chạy trong một container `docker run
 
 ## 5. Golden image và phát hành
 - `cj-base-v1` (KE_HOACH D8) build tự động bằng `image/build-image.sh`: VM builder chạy user-data `build-cj-base.sh` (cài Docker, node_exporter, venv `/opt/cj/venv`, pull sẵn image MySQL/RabbitMQ/Prometheus/Grafana, build `cj-sandbox:1`, cài Tailscale nhưng tắt), tự tắt máy, rồi script snapshot thành image và xóa builder. Một image dùng cho mọi vai trò; vai trò do cloud-init chọn.
-- Mã ứng dụng **không nằm trong image**: `scripts/release.sh <ver>` đóng gói và upload lên Swift `releases`. Khi boot, máy tải đúng version bằng application credential của chính nó (`/opt/cj/fetch-release.sh`) rồi chạy `deploy/install.sh web|worker`. Đổi code = upload version mới + `heat/deploy-cj-app.sh <ver>`; ASG web thay **từng máy một** (`rolling_updates: min_in_service 1`), nên không gián đoạn.
+- Mã ứng dụng **không nằm trong image**: `scripts/release.sh <ver>` đóng gói và upload lên Swift `releases`. Khi boot, máy tải đúng version bằng application credential của chính nó (`/opt/cj/fetch-release.sh`) rồi chạy `deploy/install.sh web|worker`. Đổi code = upload version mới + `heat/deploy-cj-app.sh <ver>`; ASG web thay **từng máy một** (`rolling_updates: min_in_service 1`). Đo khi lên 0.1.4: 133/135 request `/healthz` thành công trong lúc thay máy (2 lần timeout 3 s), nên gián đoạn rất ngắn nhưng không phải bằng 0.
 - Lợi ích: máy scale out boot nhanh (không cài gói), image ít phải build lại.
 
 ## 6. Cân bằng tải và tự mở rộng (HM 6)
@@ -77,7 +77,7 @@ Mỗi lần biên dịch và mỗi test chạy trong một container `docker run
 | web_down | `WebCPULow`: CPU web < 20% trong 5 phút và > 2 web | 300 s |
 
 - **Vì sao co giãn worker theo độ dài hàng đợi, không theo CPU:** worker 1 vCPU luôn chạy 100% CPU khi đang chấm, dù hàng đợi có 1 bài hay 100 bài. Độ dài hàng đợi đo đúng "việc còn tồn", và cùng với tốc độ chấm (~6 bài `slow-sum`/phút/worker, đo bằng loadtest trên cụm) cho biết thời gian chờ.
-- **Cooldown** chống dao động (flapping): sau mỗi lần scale phải chờ máy mới boot xong và nhận việc thì mới đánh giá lại.
+- **Cooldown** chống dao động (flapping): sau mỗi lần scale phải chờ máy mới boot xong và nhận việc thì mới đánh giá lại. Tín hiệu đến trong cooldown vẫn được trả HTTP 200 nhưng Heat bỏ qua (đã thấy trong log heat-engine).
 
 ## 7. Kết quả đo (điền sau khi chạy trên cụm)
 | Đại lượng | Giá trị |
@@ -91,6 +91,8 @@ Mỗi lần biên dịch và mỗi test chạy trong một container `docker run
 | POST `worker_down` alarm_url → còn 1 worker (đo 31/10) | **14 s** |
 | Alert firing → worker mới nhận bài đầu tiên (qua Alertmanager) | _ s (chờ `cj-mon`) |
 | Tín hiệu worker_down → còn 1 worker (đo 31/10) | **15 s** |
+| Scale qua alarm_url (đo 10/11): worker 1→2→3 và 3→2→1 | Thành công; mỗi lần Heat tạo server sau ~7 s, xóa sau ~12 s |
+| Bài rơi vào worker vừa bị xóa → được giao lại (heartbeat 30 s, đo 10/11) | ~92 s (bản đầu, heartbeat 300 s: tới ~10 phút) |
 | Hàng đợi rỗng → thu về 1 worker (qua Alertmanager, gồm `for: 1m`) | _ s |
 | Tắt 1 web ở az1 → LB ngừng gửi request tới máy đó (đo 10/11, curl mỗi ~0,8 s, timeout 2 s) | ~24 s; trong đó khoảng một nửa request lỗi (9/140 cả lần đo) |
 | Bật lại web az1 → LB gửi request trở lại | 46 s |
