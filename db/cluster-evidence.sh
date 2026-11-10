@@ -24,16 +24,18 @@ BASTION=$(openstack stack output show cj-net bastion_fip -f value -c output_valu
 [ -n "$BASTION" ] || die "không đọc được output bastion_fip của stack cj-net"
 TMP=$(mktemp -d); trap 'for s in "$TMP"/cm-*; do [ -S "$s" ] && ssh -o ControlPath="$s" -O exit x 2>/dev/null; done; rm -rf "$TMP"' EXIT
 # VM do Heat tạo lại thường xuyên (host key đổi), nằm trong mạng riêng: không lưu/kiểm host key (giống cj-health.sh)
-SSHO=(-o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR
-      -o ControlMaster=auto -o "ControlPath=$TMP/cm-%h" -o ControlPersist=120)
+BASE=(-o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR)
+SSHO=("${BASE[@]}" -o ControlMaster=auto -o "ControlPath=$TMP/cm-%h" -o ControlPersist=120)
 ssh "${SSHO[@]}" "cj@$BASTION" true 2>/dev/null || die "không SSH được bastion $BASTION (quên ssh -A?)"
-on() { local ip=$1; shift; ssh "${SSHO[@]}" -J "cj@$BASTION" "cj@$ip" "$@"; }
+# Không dùng -J: ssh tới bastion do -J mở KHÔNG nhận các -o ở trên (host key bastion chưa có trong known_hosts → bị từ chối)
+JUMP=(-o "ProxyCommand=ssh ${BASE[*]} -W %h:%p cj@$BASTION")
+on() { local ip=$1; shift; ssh "${SSHO[@]}" "${JUMP[@]}" "cj@$ip" "$@"; }
 # Lệnh mysql root trên VM dạng 1 file thực thi, để test-replication.sh dùng làm PRIMARY_CMD/REPLICA_CMD:
 # tham số được printf %q trước khi qua ssh, nên SQL có dấu cách, ngoặc, nháy vẫn nguyên vẹn
 for side in P:$PRIMARY R:$REPLICA; do
   cat > "$TMP/mysql-${side%%:*}" <<EOF
 #!/usr/bin/env bash
-exec ssh $(printf '%q ' "${SSHO[@]}") -J cj@$BASTION cj@${side#*:} "sudo cj-mysql \$(printf '%q ' "\$@")"
+exec ssh $(printf '%q ' "${SSHO[@]}" "${JUMP[@]}") cj@${side#*:} "sudo cj-mysql \$(printf '%q ' "\$@")"
 EOF
   chmod 700 "$TMP/mysql-${side%%:*}"
 done

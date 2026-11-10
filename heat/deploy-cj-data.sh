@@ -75,6 +75,8 @@ for s in cj-mysql-primary cj-rabbitmq cj-mysql-replica; do
     log=$(openstack console log show --lines 500 "$s" 2>/dev/null || true)
     if grep -q "CJ_DATA_FAILED" <<<"$log"; then grep "CJ_DATA_FAILED" <<<"$log"; echo "$s lỗi, xem: openstack console log show $s"; exit 1; fi
     grep -q "CJ_DATA_READY" <<<"$log" && { echo "  $s sẵn sàng"; break; }
+    # Máy cũ đã khởi động lại (bật/tắt cụm): user_data chỉ chạy ở lần boot đầu nên log mới không có READY
+    grep -qE "Cloud-init v\. .* finished at" <<<"$log" && { echo "  $s đã khởi tạo từ trước (boot lại), bỏ qua"; break; }
     [ "$(date +%s)" -lt "$deadline" ] || { echo "$s quá 15 phút chưa xong, xem: openstack console log show $s"; exit 1; }
     sleep 10
   done
