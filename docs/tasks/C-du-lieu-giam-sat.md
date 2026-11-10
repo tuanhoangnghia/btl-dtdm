@@ -60,19 +60,26 @@ docs/cost/
 ## Tiến độ
 - [x] Schema chốt với B (B viết app khớp `db/schema.sql` v1, không cần đổi)
 - [x] Replication local: `db/local-up.sh` chạy OK 10/11 (replica thấy bản ghi sau ~1 s, từ chối ghi) → `docs/evidence/C-local-replication.txt`
-- [x] Backup/restore local: chạy OK 10/11 trong `db/local-up.sh` (backup → restore vào primary, replication vẫn chạy); bản Swift chưa thử
+- [x] Backup/restore local: chạy OK 10/11 trong `db/local-up.sh` (backup → restore vào primary, replication vẫn chạy); bản Swift chạy OK trên cụm 10/11
 - [x] Monitoring local + email thật: 10/11 thư thử tới Gmail OK, alarm_url (webhook) OK, ReplicationBroken firing sau ~72 s rồi tự hết → `docs/evidence/C-local-monitoring.txt`, `C-local-replication-broken.txt`
 - [x] Rules + dashboard: 6 luật kế hoạch + 3 luật dữ liệu, unit test promtool, dashboard 20 panel; `check.sh` TẤT CẢ OK 10/11; tên metric replication đã xác minh (khớp)
 - [ ] Bảng chi phí: `docs/cost/chi-phi.md`, giá GCP đã kiểm bằng Cloud Billing Catalog API 10/11 (3 phương án: 14,9 / 6,7 / 5,9 triệu đ/tháng); còn số thật + ảnh Billing (C tự xem được), giá AWS
 - [ ] `scripts/cj-health.sh`: đã viết, chưa chạy trên cụm
 - [ ] Báo cáo: phần C `docs/report/C-du-lieu-giam-sat.md`; **báo cáo chính `docs/report/bao-cao.md` đã ghép đủ 9 mục** (10/11), còn số đo cụm, ảnh, hình kiến trúc PNG, link video; lời thoại demo + vấn đáp `docs/report/C-demo-loi-thoai.md`
-- [ ] Stack `cj-data` trên cụm → báo B: deploy 10/11 được **Primary + RabbitMQ (CJ_DATA_READY)**, **Replica lỗi "No valid host"** (DISK_GB 2 compute đầy 45/45), chờ A tăng `disk_allocation_ratio` rồi chạy lại `deploy-cj-data.sh` (stack đang CREATE_FAILED, lần sau tự update)
-- [ ] Cron backup lên Swift (có trong `db/vm-bootstrap.sh`, chưa chạy thật)
-- [ ] Stack `cj-mon` với alarm_url thật: bản nháp `heat/cj-mon.yaml` + `deploy-cj-mon.sh` xong, chưa deploy
-- [ ] Minh chứng HM 3, 4, 7, 8: script `db/cluster-evidence.sh` sẵn sàng (đã thử phần SQL với MySQL local), chờ Replica để chạy → `docs/evidence/C-cluster-evidence.txt`
+- [x] Stack `cj-data` trên cụm: **UPDATE_COMPLETE 10/11**, Primary (az1) + Replica (az2) + RabbitMQ đủ 3 máy sau khi A đặt `disk_allocation_ratio = 2.0` (Placement DISK_GB 45/90 mỗi compute)
+- [x] Backup lên Swift: `backup-mysql.sh` chạy thật 10/11 (0,95 s, object `backups/mysql/…sql.gz`, tự xóa sau 7 ngày); cron 02:00 đã cài sẵn trên primary
+- [ ] Stack `cj-mon` với alarm_url thật: `heat/cj-mon.yaml` + `deploy-cj-mon.sh` xong; **chờ C thêm SMTP_USER, SMTP_APP_PASSWORD, ALERT_EMAIL_TO vào `/home/cj/secrets/data.env`** (hiện thiếu cả 3); app-alarms.env của B và CJ_MONITOR_AC_* đã có
+- [x] Minh chứng HM 3, 4 trên cụm: `docs/evidence/C-cluster-evidence.txt` (10/11, có RESTORE=1). Còn HM 7 (chạy lại với `ALERT=1` sau cj-mon)
 - [ ] Báo cáo ghép + PDF
 
 ## Nhật ký
+- 10/11 (C, trên cụm, đợt 4, ~10:50–11:20 giờ VN, C giữ khóa):
+  - Cụm đang bật, không ai giữ khóa → C acquire. A đã đặt `disk_allocation_ratio = 2.0` (`/etc/kolla/config/nova.conf` trên controller, chưa commit vào repo); Placement: mỗi compute DISK_GB 45/90.
+  - `deploy-cj-data.sh` (update): Heat tạo lại `cj-mysql-replica` (az2), **CJ_DATA_READY sau 66 s**, stack UPDATE_COMPLETE. Script lại báo "primary quá 15 phút": primary/rabbitmq chỉ boot lại nên console log mới không có READY → sửa script, coi "Cloud-init … finished" mà không có READY là máy cũ boot lại.
+  - `cluster-evidence.sh`: lỗi "Host key verification failed" vì ssh do `-J` mở tới bastion không nhận các `-o` → đổi sang `ProxyCommand`; bước restore nuốt phần còn lại của heredoc → thêm `< /dev/null`. Laptop không có ssh-agent: chạy `eval $(ssh-agent -s); ssh-add ~/.ssh/cloudjudge` trước `ssh -A`.
+  - Kết quả (`docs/evidence/C-cluster-evidence.txt`, `RESTORE=1`): replica thấy bản ghi ngay, từ chối ghi (ERROR 1290), IO/SQL Running Yes; trễ nhân bản trung vị 17,2 ms, max 30,9 ms (lần trước 17,6/21,9); backup lên Swift 0,95 s / 1,4 KB; restore (gồm tải Swift) 2,5 s, replica khớp +0,34 s. CSDL `cloudjudge` còn trống (0 user/bài/bài nộp).
+  - cj-mon chưa deploy: `data.env` thiếu SMTP_USER, SMTP_APP_PASSWORD, ALERT_EMAIL_TO (`data.env` là cj:cj 640, user `trong` chỉ đọc → ghi bằng `sudo tee -a`).
+  - 2 VM GCP cũ `compute`/`controller` (asia-southeast1-b, tắt từ 28/09): lệnh xóa bị chặn bởi quyền của phiên Claude, chuyển cho C tự chạy.
 - 10/11 (C, offline, đợt 3, trong lúc A sửa `disk_allocation_ratio`; A giữ khóa cụm, C không đụng cụm):
   - **Chi phí**: lấy giá GCP từ **Cloud Billing Catalog API** (`cloudbilling.googleapis.com/v1/services/6F81-5844-456A/skus`, token gcloud, không cần bật API trong project). Khớp: N2 0,038999 USD/vCPU-giờ + 0,005226 USD/GiB-giờ (n2-highmem-4 = 0,3232), pd-balanced 0,110, egress APAC 0,12, CUD 1 năm 37 %. **Khác ước tính cũ**: snapshot vùng Singapore 0,061 (cũ 0,029), pd-standard 0,044 (cũ 0,048), IP tĩnh để không 0,011 (cũ 0,010). Thêm 2 đĩa 30 GiB của VM cũ vào chi phí lúc tắt → ≈ 1,32 USD/ngày (cũ 1,2); dự kiến cả dự án ≈ 133 USD ≈ 3,5 triệu. 3 phương án không đổi. `gcloud billing projects describe` cho thấy tài khoản C xem được billing account `01BE00-008CAB-253DE8` → C tự lấy số thật ở Console → Billing → Reports.
   - **`db/cluster-evidence.sh`**: 1 lệnh trên controller (`ssh -A`) ra đủ minh chứng HM 3 (volume, container), HM 4 (`test-replication.sh` qua bastion), độ trễ nhân bản 20 lần (`performance_schema`, kèm `WAIT_FOR_EXECUTED_GTID_SET`), kích thước CSDL, backup thật lên Swift; tùy chọn `RESTORE=1` (ghi đè CSDL) và `ALERT=1` (cắt nhân bản, đo pending/firing/thư, tự START lại). SSH qua bastion dùng ControlMaster; tham số mysql được `printf %q` trước khi qua ssh (đã thử bằng ssh giả). Phần SQL chạy thử với MySQL 8.4 local: trễ 4–8 ms, restore-wait OK.
