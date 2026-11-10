@@ -1,23 +1,24 @@
 # Chi phí CloudJudge (hạng mục 8)
 
-> Chủ: C. Tỷ giá **1 USD ≈ 26.000 đ**. Giá **ước tính** theo bảng giá công khai và trang tổng hợp giá (tra ngày 09/11/2026, xem mục 5),
-> phải **kiểm lại bằng [GCP Pricing Calculator](https://cloud.google.com/products/calculator) và [AWS Pricing Calculator](https://calculator.aws/)** trước khi chốt báo cáo.
-> Chi phí **thật** lấy từ Billing của project `omega-dahlia-468315-f6` (mục 2), cần A chụp nếu C không có quyền xem billing.
+> Chủ: C. Tỷ giá **1 USD ≈ 26.000 đ**. Giá GCP **lấy thẳng từ Cloud Billing Catalog API** (bảng giá chính thức, USD, tra 10/11/2026, xem mục 5).
+> Giá AWS theo trang tổng hợp giá, còn phải kiểm lại bằng [AWS Pricing Calculator](https://calculator.aws/) trước khi chốt báo cáo.
+> Chi phí **thật** lấy từ Billing → Reports của project `omega-dahlia-468315-f6` (mục 2); tài khoản của C xem được billing account `01BE00-008CAB-253DE8`.
 
 ## 1. Đơn giá dùng trong bảng
 
 | Thứ (vùng) | Đơn giá | Ghi chú |
 |---|---|---|
-| GCE n2-highmem-4 (asia-southeast1) | **0,323 USD/giờ** | controller |
-| GCE n2-highmem-2 (asia-southeast1) | **≈ 0,1615 USD/giờ** | 2 compute; bằng một nửa n2-highmem-4 (giá N2 tính theo vCPU + GB RAM) |
+| N2 vCPU / RAM (asia-southeast1) | 0,038999 USD/vCPU-giờ · 0,005226 USD/GiB-giờ | giá N2 tính theo vCPU + RAM |
+| GCE n2-highmem-4 (4 vCPU, 32 GiB) | **0,3232 USD/giờ** | controller (4 × 0,038999 + 32 × 0,005226) |
+| GCE n2-highmem-2 (2 vCPU, 16 GiB) | **0,1616 USD/giờ** | 2 compute |
 | Giảm giá dùng liên tục (SUD) N2 | tối đa **20 %** khi chạy đủ tháng | tự động, không cần cam kết |
-| Cam kết 1 năm (CUD) N2 | ≈ 37 % | chỉ dùng cho kịch bản tham khảo |
-| IP ngoài đang gắn VM | 0,005 USD/giờ/IP | controller (static) + 2 compute (ephemeral) |
-| IP static để không (máy tắt) | 0,010 USD/giờ | `cj-ctl-ip` vẫn tính khi cụm tắt |
-| pd-balanced | ≈ 0,11 USD/GB-tháng | tính **cả khi máy tắt** |
-| pd-standard | ≈ 0,048 USD/GB-tháng | đĩa Swift |
-| Snapshot (standard) | ≈ 0,029 USD/GB-tháng | |
-| Egress Internet (châu Á) | ≈ 0,12 USD/GB | demo chỉ vài GB |
+| Cam kết 1 năm (CUD) N2 | 37 % (0,024567 USD/vCPU-giờ · 0,003292 USD/GiB-giờ) | chỉ dùng cho kịch bản tham khảo |
+| IP ngoài đang gắn VM | 0,005 USD/giờ/IP | controller (static) + 2 compute (ephemeral). Catalog ghi bậc 0–720 giờ/tháng giá 0 (có thể là ưu đãi theo billing account); bảng này vẫn tính 0,005 cho chắc |
+| IP static để không (máy tắt) | 0,011 USD/giờ | `cj-ctl-ip` vẫn tính khi cụm tắt |
+| pd-balanced | 0,110 USD/GiB-tháng | tính **cả khi máy tắt** |
+| pd-standard | 0,044 USD/GiB-tháng | đĩa Swift + 2 đĩa của VM cũ |
+| Snapshot standard, lưu ở vùng asia-southeast1 | 0,061 USD/GiB-tháng | tính theo dung lượng thật đã lưu (không theo cỡ đĩa); lưu đa vùng `asia` là 0,083 |
+| Egress Internet Singapore → APAC (gồm VN) | 0,12 USD/GiB (1 TiB đầu) | demo chỉ vài GB |
 | AWS EC2 t3.small (ap-southeast-1) | 0,0264 USD/giờ | 2 vCPU, 2 GB |
 | AWS NAT Gateway | 0,059 USD/giờ + 0,059 USD/GB | |
 | AWS ALB | ≈ 0,0252 USD/giờ + ≈ 0,008 USD/LCU-giờ | |
@@ -25,13 +26,18 @@
 
 ## 2. Chi phí thật của dự án (trên tín dụng dùng thử GCP)
 
-Đĩa thật của cụm (theo `docs/tasks/A-ha-tang.md`): pd-balanced 246 GB (controller 100 + cinder 50, 2 compute × 48), pd-standard 30 GB (swift), snapshot mốc `m2` ~18 GiB.
+Tài nguyên thật trong project (đọc bằng `gcloud compute disks/snapshots/addresses list` ngày 10/11/2026):
+- pd-balanced **246 GiB**: `os-controller` 100 + `os-controller-cinder` 50 + `os-compute-1` 48 + `os-compute-2` 48.
+- pd-standard **90 GiB**: `os-controller-swift` 30 + **2 đĩa của 2 VM cũ** `compute`, `controller` (zone b, 30 GiB mỗi cái, máy TERMINATED từ 28/09 nhưng đĩa vẫn tính tiền).
+- Snapshot mốc `m2` (29/10, 5 cái, lưu ở asia-southeast1): dung lượng thật **≈ 17,9 GiB** (ctl-boot 7,4 + c1-boot 5,7 + c2-boot 4,8; cinder và swift gần 0).
+- 1 IP static `cj-ctl-ip`.
 
 | Khoản | Cách tính | Ước tính |
 |---|---|---|
-| Cụm **đang chạy** | 0,323 + 2 × 0,1615 + 3 × 0,005 (IP) | **≈ 0,66 USD/giờ ≈ 17.200 đ/giờ** |
-| Cụm **đang tắt** (vẫn tính) | đĩa 246 × 0,11 + 30 × 0,048 = 28,5 USD/tháng; IP static 0,01 USD/giờ; snapshot 18 × 0,029 | **≈ 1,2 USD/ngày ≈ 31.000 đ/ngày** |
-| Dự kiến 28/10 → 22/11 (26 ngày), ~150 giờ chạy | 150 × 0,66 + 26 × 1,2 | **≈ 130 USD ≈ 3,4 triệu đ** |
+| Cụm **đang chạy** | 0,3232 + 2 × 0,1616 + 3 × 0,005 (IP) | **≈ 0,66 USD/giờ ≈ 17.200 đ/giờ** |
+| Cụm **đang tắt** (vẫn tính) | đĩa 246 × 0,11 + 90 × 0,044 = 31,0 USD/tháng; snapshot 17,9 × 0,061 = 1,1 USD/tháng; IP static 0,011 × 24 | **≈ 1,32 USD/ngày ≈ 34.000 đ/ngày** |
+| Trong đó: 2 đĩa VM cũ | 60 × 0,044 = 2,64 USD/tháng | ≈ 0,09 USD/ngày ≈ 2.300 đ/ngày (≈ 69.000 đ/tháng): xóa được nếu nhóm không cần |
+| Dự kiến 28/10 → 22/11 (26 ngày), ~150 giờ chạy | 150 × 0,66 + 26 × 1,32 | **≈ 133 USD ≈ 3,5 triệu đ** |
 
 Theo dõi số thật (điền từ Billing → Reports, lọc project `omega-dahlia-468315-f6`):
 
@@ -51,16 +57,16 @@ Quy mô như demo: 2–3 web, 1–3 worker (trung bình ~1,2), MySQL primary + r
 
 | Khoản | Cách tính | USD/tháng |
 |---|---|---|
-| 3 VM (giá niêm yết) | 0,646 × 730 = 471,6 | |
-| 3 VM sau SUD 20 % | 471,6 × 0,8 | **377,3** |
-| Đĩa | 246 × 0,11 + 30 × 0,048 | 28,5 |
+| 3 VM (giá niêm yết) | 0,6465 × 730 = 471,9 | |
+| 3 VM sau SUD 20 % | 471,9 × 0,8 | **377,5** |
+| Đĩa (không tính 2 đĩa VM cũ) | 246 × 0,11 + 30 × 0,044 | 28,4 |
 | 3 IP ngoài | 3 × 0,005 × 730 | 11,0 |
-| Snapshot + egress | 18 × 0,029 + 20 GB × 0,12 | 2,9 |
+| Snapshot + egress | 17,9 × 0,061 + 20 GB × 0,12 | 3,5 |
 | **Hạ tầng** | | **≈ 420 USD ≈ 10,9 triệu đ** |
 | Nhân lực | 20 % kỹ sư (vận hành cả lớp OpenStack) | 4,0 triệu đ |
 | **Tổng** | | **≈ 14,9 triệu đ** |
 
-Nếu cam kết 1 năm (CUD ~37 %): VM ≈ 297 USD → tổng ≈ 12,8 triệu đ.
+Nếu cam kết 1 năm (CUD 37 %): VM ≈ 297 USD → tổng ≈ 12,8 triệu đ.
 
 ### 3.2. OpenStack trên 3 máy chủ cũ của trường
 
@@ -110,7 +116,9 @@ Nếu dùng Amazon MQ (RabbitMQ) thay SQS: +~25 USD; NAT Gateway ở cả 2 AZ: 
 - **Ảo hóa lồng**: một phần CPU/RAM của VM GCP dùng cho Nova, Neutron, Octavia, Kolla chứ không chạy ứng dụng.
 - Thiết kế này tối ưu cho **học** (tự dựng IaaS), không tối ưu chi phí. Ở quy mô một môn học, dịch vụ có quản lý (PaaS: RDS, SQS, ALB) có **TCO** thấp hơn vì nhân lực chiếm phần lớn.
 
-## 5. Nguồn giá (tra 09/11/2026, cần kiểm lại)
-- GCP n2-highmem-4, asia-southeast1 ≈ 0,323 USD/giờ: [devzero.io](https://www.devzero.io/instances/gcp/n2-highmem-4), [cloud-mercato](https://pcr.cloud-mercato.com/providers/google/flavors/n2-highmem-4.cascadelake)
-- GCP IP, đĩa, snapshot: [VPC network pricing](https://cloud.google.com/vpc/network-pricing), [Disk and image pricing](https://cloud.google.com/compute/disks-image-pricing) (số trong bảng là ước tính, chưa đọc được bảng theo vùng)
+## 5. Nguồn giá
+- **GCP (tra 10/11/2026)**: [Cloud Billing Catalog API](https://cloud.google.com/billing/docs/reference/rest/v1/services.skus/list), dịch vụ Compute Engine `6F81-5844-456A`, `currencyCode=USD`. Đây là bảng giá chính thức mà Pricing Calculator cũng dùng. Các SKU đã dùng: `N2 Instance Core/Ram running in Singapore`, `Commitment v1: N2 Cpu/Ram in Singapore for 1 Year`, `Balanced PD Capacity in Singapore`, `Storage PD Capacity in Singapore`, `Storage PD Snapshot in Singapore`, `Static Ip Charge in Singapore`, `External IP Charge on a Standard VM`, `Network Internet Data Transfer Out from Singapore to Apac(Excluding Korea and Indonesia)`.
+  Lệnh lấy lại: `curl -H "Authorization: Bearer $(gcloud auth print-access-token)" "https://cloudbilling.googleapis.com/v1/services/6F81-5844-456A/skus?currencyCode=USD&pageSize=5000"` (lặp theo `nextPageToken`).
+- Bản đề xuất tính snapshot ≈ 0,029 USD/GB-tháng và pd-standard ≈ 0,048; giá thật ở Singapore là 0,061 và 0,044. Tổng gần như không đổi vì snapshot chỉ ~18 GiB.
+- SUD N2 tối đa 20 %: [Sustained use discounts](https://cloud.google.com/compute/docs/sustained-use-discounts).
 - AWS t3.small ap-southeast-1: [doit.com](https://www.doit.com/compute/spot/ap-southeast-1/t3.small); NAT Gateway: [egresscost.com](https://egresscost.com/aws/ap-southeast-1); RDS db.t3.micro: [bytebase.com](https://www.bytebase.com/dbcost/rds/instance/db.t3.micro/)
