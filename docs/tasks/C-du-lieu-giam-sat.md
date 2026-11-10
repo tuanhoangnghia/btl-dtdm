@@ -82,6 +82,9 @@ docs/cost/
   - Grafana: tunnel từ laptop `ssh -i ~/.ssh/cloudjudge -J cj-controller -L 3000:10.0.2.11:3000 cj@172.24.4.131` → `http://localhost:3000` (`/api/health` OK, Grafana 11.3.0); mật khẩu admin trong `/etc/cj-mon/grafana/admin.pw` trên cj-monitor.
   - Không tắt cụm (B đang giữ khóa).
   - 22:05: C nhận 2 thư ở Gmail lúc 21:44 (FIRING rồi RESOLVED ReplicationBroken, `instance = cj-mysql-replica`) → chép nguyên văn vào `docs/evidence/C-hm7-gmail.txt` (che địa chỉ Gmail); C chụp dashboard qua đường hầm → `C-hm7-grafana.png`. Đã đóng đường hầm, xóa file mật khẩu tạm.
+  - Audit log GCP: 2 VM cũ `compute`/`controller` (zone b) do chính tài khoản của C tạo 23/09 (không phải của A/B) → C tự xóa trên Console (đĩa `autoDelete=True` nên đi cùng VM).
+  - Dọn ⏳ cũ trong báo cáo C (HM 3, 4 đã có minh chứng cụm). Còn ⏳: loadtest có tự mở rộng (cần B), số Billing thật.
+  - 22:23: B đã nhả khóa, không ai giữ → nhả khóa C, tắt cụm bằng `CJ_ME=C gcp-down.sh` (5 VM TERMINATED).
 - 10/11 (C, trên cụm, đợt 4, ~10:50–11:20 giờ VN, C giữ khóa):
   - Cụm đang bật, không ai giữ khóa → C acquire. A đã đặt `disk_allocation_ratio = 2.0` (`/etc/kolla/config/nova.conf` trên controller, chưa commit vào repo); Placement: mỗi compute DISK_GB 45/90.
   - `deploy-cj-data.sh` (update): Heat tạo lại `cj-mysql-replica` (az2), **CJ_DATA_READY sau 66 s**, stack UPDATE_COMPLETE. Script lại báo "primary quá 15 phút": primary/rabbitmq chỉ boot lại nên console log mới không có READY → sửa script, coi "Cloud-init … finished" mà không có READY là máy cũ boot lại.

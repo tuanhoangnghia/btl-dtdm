@@ -2,7 +2,7 @@
 
 > Hạng mục phụ trách: **3** (hai loại lưu trữ), **4** (cơ sở dữ liệu), **7** (giám sát có cảnh báo), **8** (chi phí).
 > Mã: `db/`, `monitoring/`, `heat/cj-data.yaml`, `heat/cj-mon.yaml` + 2 script deploy, `docs/cost/chi-phi.md`.
-> **Còn thiếu:** mọi số liệu chạy thật (đánh dấu ⏳), ảnh chụp màn hình, minh chứng `docs/evidence/C-*`. Bản này mô tả thiết kế đã viết xong.
+> **Còn thiếu (⏳):** ảnh Grafana/thư khi B chạy loadtest có tự mở rộng (QueueHigh → worker 1→2→3→1), số tiền thật trên Billing. Số đo và minh chứng cụm HM 3, 4, 7 đã có (`docs/evidence/C-cluster-*.txt`, `C-hm7-*`).
 
 ## 1. Kiến trúc lớp dữ liệu và giám sát
 
@@ -32,7 +32,7 @@ Mỗi máy dữ liệu là 1 VM `cj-base-v1` chạy container Docker (`--network
 
 - Volume tạo riêng trong stack (`OS::Cinder::Volume`), gắn bằng `OS::Cinder::VolumeAttachment`. VM nhận diện đĩa qua `/dev/disk/by-id/virtio-<20 ký tự đầu của volume id>`, định dạng ext4 nhãn `cjdata` **chỉ khi đĩa trống**. Tạo lại VM thì volume cũ được gắn lại, MySQL thấy datadir cũ và chạy tiếp, không khởi tạo lại.
 - Backup có hạn dùng: object `backups/mysql/<YYYYmmdd-HHMM>.sql.gz` mang header `X-Delete-After: 604800`, Swift tự xóa sau 7 ngày.
-- Minh chứng ⏳: `openstack volume list --long` (3 volume `in-use`, gắn đúng máy); `openstack object list submissions` có object mới sau khi nộp bài; `openstack object list backups`.
+- Minh chứng cụm (`docs/evidence/C-cluster-evidence.txt` mục 1, 1b; đo lại trong `C-cluster-alert.txt`): `openstack volume list --long` (3 volume `in-use`, gắn đúng máy); `openstack object list submissions` có object mới sau khi nộp bài; `openstack object list backups`.
 
 ## 3. Hạng mục 4 – Cơ sở dữ liệu
 
@@ -74,7 +74,7 @@ Không có **tự động failover** (không Orchestrator/Group Replication), n�
 ### 3.5. Vì sao không dùng Trove
 Trove (DBaaS của OpenStack) cần thêm image guest riêng, guest agent, message bus. Rủi ro cao trong 3 tuần mà phải dựng cả OpenStack. Tự dựng MySQL trong VM bằng Heat cũng cho thấy rõ cơ chế nhân bản, quyền và backup, đúng mục tiêu học.
 
-Minh chứng (local, `docs/evidence/C-local-replication.txt`; cụm ⏳): `bash db/test-replication.sh` (ghi ở primary → đọc thấy ở replica sau ~1 giây theo đồng hồ của script, độ trễ thật đo trong MySQL ~6 ms; ghi vào replica bị từ chối `ERROR 1290 … super-read-only`; `SHOW REPLICA STATUS` có `Replica_IO_Running: Yes`, `Replica_SQL_Running: Yes`); `restore-mysql.sh latest` trên cụm.
+Minh chứng (local `docs/evidence/C-local-replication.txt`; cụm `docs/evidence/C-cluster-evidence.txt` mục 2, 3, 6 — có cả restore thật): `bash db/test-replication.sh` (ghi ở primary → đọc thấy ở replica sau ~1 giây theo đồng hồ của script, độ trễ thật đo trong MySQL ~6 ms; ghi vào replica bị từ chối `ERROR 1290 … super-read-only`; `SHOW REPLICA STATUS` có `Replica_IO_Running: Yes`, `Replica_SQL_Running: Yes`); `restore-mysql.sh latest` trên cụm.
 
 ## 4. Hạng mục 7 – Giám sát có cảnh báo
 
