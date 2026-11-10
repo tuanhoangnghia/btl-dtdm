@@ -102,8 +102,8 @@ Nền tảng: **OpenStack** (mức +2 điểm). Nhóm tự cài OpenStack bằng
 |---|---|---|---|
 | 1 | Mạng riêng, subnet công khai/riêng tư, 2 AZ | Stack `cj-net`: `net-public` 10.0.1.0/24 (LB, bastion), `net-app` 10.0.2.0/24, `net-data` 10.0.3.0/24, 1 router có SNAT. `az1`/`az2` trên 2 zone GCE | `A-demo-checks.txt` (network, subnet, router, AZ); `A-smoke-test-vm.txt`; ảnh Network Topology ⏳ |
 | 2 | Máy chủ ứng dụng trong subnet riêng | Chỉ bastion và VIP của LB có floating IP. 6 security group tối thiểu: `sg-web` chỉ nhận 8000 từ dải amphora, `sg-db` chỉ nhận 3306 từ web/worker/replica, `sg-monitor` chỉ từ bastion | `A-demo-checks.txt` (floating IP, rule theo tên SG); worker gọi thẳng web bị timeout ⏳ |
-| 3 | Hai loại lưu trữ trở lên | **Swift** (object): mã nộp, bộ test, bản phát hành, bản backup (tự xóa sau 7 ngày). **Cinder** (block): dữ liệu MySQL primary, replica, RabbitMQ; tạo lại VM thì volume cũ được gắn lại | `openstack volume list --long`, `openstack object list` (`db/cluster-evidence.sh` mục 1) ⏳ |
-| 4 | Cơ sở dữ liệu | MySQL 8.4 tự dựng: Primary (az1) → Replica (az2) bằng GTID; replica `super_read_only`; user tối thiểu (`cj_app` không có DELETE/DDL, `cj_ro` chỉ đọc); backup hằng ngày lên Swift bằng danh tính `cj-backup` | Local: `C-local-replication.txt`, `C-local-timings.txt`. Cụm: `C-cluster-evidence.txt` ⏳ |
+| 3 | Hai loại lưu trữ trở lên | **Swift** (object): mã nộp, bộ test, bản phát hành, bản backup (tự xóa sau 7 ngày). **Cinder** (block): dữ liệu MySQL primary, replica, RabbitMQ; tạo lại VM thì volume cũ được gắn lại | `openstack volume list --long`, `openstack object list` (`C-cluster-evidence.txt` mục 1, 1b) |
+| 4 | Cơ sở dữ liệu | MySQL 8.4 tự dựng: Primary (az1) → Replica (az2) bằng GTID; replica `super_read_only`; user tối thiểu (`cj_app` không có DELETE/DDL, `cj_ro` chỉ đọc); backup hằng ngày lên Swift bằng danh tính `cj-backup` | Local: `C-local-replication.txt`, `C-local-timings.txt`. Cụm: `C-cluster-evidence.txt` (ghi primary → đọc replica, replica từ chối ghi, backup + restore qua Swift) |
 | 5 | Phân quyền IAM, không nhúng khóa | 4 danh tính Keystone (`cj-web`, `cj-worker`, `cj-backup`, `cj-monitor`), mỗi danh tính 1 application credential giới hạn quyền. Secret truyền qua tham số ẩn của Heat, không có trong Git | `A-acl-test.txt` (worker xóa/ghi object bị 403; monitor đọc dữ liệu bị 403); `git grep` sạch (`A-demo-checks.txt`) |
 | 6 | Cân bằng tải, tự mở rộng | Octavia ACTIVE_STANDBY + health check `/healthz`. Web 2–3 máy theo CPU (2 ASG ghim theo AZ), worker 1–3 máy theo độ dài hàng đợi; Alertmanager gọi `alarm_url` của `OS::Heat::ScalingPolicy` | `B-cum-31-10.txt` (alarm_url → thêm/bớt worker); loadtest 60 bài, worker 1→2→3→1, tắt web az1 ⏳ |
 | 7 | Giám sát, có cảnh báo | Prometheus tìm VM bằng `openstack_sd` + metadata `cj_role`; 9 luật (QueueHigh, QueueIdle, WebCPUHigh, WebCPULow, SubmissionStuck, InstanceDown, MySQLDown, ReplicationBroken, BackupStale) có unit test; email qua Gmail; dashboard Grafana 20 panel | Local: `C-local-monitoring.txt`, `C-local-replication-broken.txt` (thư thật tới Gmail). Cụm: ảnh Grafana + hộp thư ⏳ |
@@ -158,9 +158,9 @@ Nền tảng: **OpenStack** (mức +2 điểm). Nhóm tự cài OpenStack bằng
 
 | Đo | Local | Cụm |
 |---|---|---|
-| Độ trễ nhân bản (commit ở primary → áp dụng xong ở replica, `performance_schema`, 20 lần) | trung vị 6,4 ms, max 11,2 ms | ⏳ |
-| Backup (`mysqldump --single-transaction` + gzip) / kích thước | 1,0 s / 0,6 MB | ⏳ (gồm upload Swift) |
-| Restore vào primary → replica khớp lại | 3,2 s → +0,9 s | ⏳ |
+| Độ trễ nhân bản (commit ở primary → áp dụng xong ở replica, `performance_schema`, 20 lần) | trung vị 6,4 ms, max 11,2 ms | trung vị 17,2 ms, max 30,9 ms |
+| Backup (`mysqldump --single-transaction` + gzip) / kích thước | 1,0 s / 0,6 MB | 0,95 s / 1,4 KB (gồm upload Swift; CSDL còn trống) |
+| Restore vào primary → replica khớp lại | 3,2 s → +0,9 s | 2,5 s (gồm tải từ Swift) → +0,34 s |
 | Cảnh báo → Gmail nhận thư (gồm `group_wait` 10 s) | 10,5 s | ⏳ |
 | ReplicationBroken: luồng nhân bản dừng → firing (`for: 1m`) | ~72 s | ⏳ |
 

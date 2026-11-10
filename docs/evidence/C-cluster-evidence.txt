@@ -1,0 +1,130 @@
+# Số đo trên cụm (OpenStack trên GCP, MySQL 8.4 primary az1 + replica az2) 2026-11-10T04:13:57Z
+
+## 0. Máy và phiên bản
+
+cj-mysql-primary: AZ=az1
+cj-mysql-replica: AZ=az2
+PRIMARY: cj-mysql-primary MySQL 8.4.13 server_id=1 read_only=0 super_read_only=0 replica_parallel_workers=4
+REPLICA: cj-mysql-replica MySQL 8.4.13 server_id=2 read_only=1 super_read_only=1 replica_parallel_workers=4
+10.0.3.10 đồng bộ NTP: yes
+10.0.3.11 đồng bộ NTP: yes
+
+## 1. HM 3 – Block storage: volume Cinder gắn vào máy dữ liệu
+volume                   status      GB  gắn vào
+cj-mysql-primary-data    in-use      10  cj-mysql-primary:/dev/vdb
+cj-rabbitmq-data         in-use       5  cj-rabbitmq:/dev/vdb
+cj-mysql-replica-data    in-use      10  cj-mysql-replica:/dev/vdb
+
+## 1b. HM 3 – Object storage: container Swift
+backups      2 object
+releases     4 object
+submissions  0 object
+testcases    0 object
+-- 5 object mới nhất trong submissions:
+
+## 2. HM 4 – Ghi ở Primary, đọc ở Replica, Replica từ chối ghi (db/test-replication.sh)
+== 1. Ghi ở PRIMARY: check-20261110T041426Z-20714
++------------------+-----------+-----------+----+------------------------------+-------------------------+
+| host             | server_id | read_only | id | note                         | at                      |
++------------------+-----------+-----------+----+------------------------------+-------------------------+
+| cj-mysql-primary |         1 |         0 | 43 | check-20261110T041426Z-20714 | 2026-11-10 04:14:27.056 |
++------------------+-----------+-----------+----+------------------------------+-------------------------+
+== 2. Đọc ở REPLICA
++------------------+-----------+-----------------+----+------------------------------+-------------------------+
+| host             | server_id | super_read_only | id | note                         | at                      |
++------------------+-----------+-----------------+----+------------------------------+-------------------------+
+| cj-mysql-replica |         2 |               1 | 43 | check-20261110T041426Z-20714 | 2026-11-10 04:14:27.056 |
++------------------+-----------+-----------------+----+------------------------------+-------------------------+
+replica thấy bản ghi sau ~0 giây
+== 3. Ghi thử ở REPLICA (phải bị từ chối)
+ERROR 1290 (HY000) at line 1: The MySQL server is running with the --super-read-only option so it cannot execute this statement
+== 4. Trạng thái replication
+                  Source_Host: 10.0.3.10
+                  Source_User: repl
+           Replica_IO_Running: Yes
+          Replica_SQL_Running: Yes
+        Seconds_Behind_Source: 0
+           Retrieved_Gtid_Set: 317949ee-dc66-11f1-aca4-fa163ed69a6e:1-92
+            Executed_Gtid_Set: 317949ee-dc66-11f1-aca4-fa163ed69a6e:1-92,
+                Auto_Position: 1
+== 5. Số bản ghi app ở 2 phía
+PRIMARY: users=0 problems=0 submissions=0
+REPLICA: users=0 problems=0 submissions=0
+OK
+
+## 3. Độ trễ nhân bản đo trong MySQL (20 giao dịch 1 dòng vào cj_check.ping)
+   = LAST_APPLIED_TRANSACTION_END_APPLY_TIMESTAMP (replica) - ORIGINAL_COMMIT_TIMESTAMP (primary)
+   2 VM khác đồng hồ (đều đồng bộ NTP, xem mục 0): sai số cỡ vài ms; cột 'chờ' là thời gian WAIT_FOR_EXECUTED_GTID_SET đo trên replica
+  lần  1: trễ 14.2 ms (chờ 0.0 ms)
+  lần  2: trễ 25.6 ms (chờ 0.1 ms)
+  lần  3: trễ 15.7 ms (chờ 0.0 ms)
+  lần  4: trễ 17.2 ms (chờ 0.0 ms)
+  lần  5: trễ 22.8 ms (chờ 0.0 ms)
+  lần  6: trễ 17.3 ms (chờ 0.0 ms)
+  lần  7: trễ 20.4 ms (chờ 0.1 ms)
+  lần  8: trễ 13.9 ms (chờ 0.0 ms)
+  lần  9: trễ 20.6 ms (chờ 0.0 ms)
+  lần 10: trễ 26.8 ms (chờ 0.0 ms)
+  lần 11: trễ 16.8 ms (chờ 0.0 ms)
+  lần 12: trễ 23.4 ms (chờ 0.0 ms)
+  lần 13: trễ 13.8 ms (chờ 0.0 ms)
+  lần 14: trễ 16.0 ms (chờ 0.3 ms)
+  lần 15: trễ 15.0 ms (chờ 0.0 ms)
+  lần 16: trễ 17.1 ms (chờ 0.0 ms)
+  lần 17: trễ 30.9 ms (chờ 0.2 ms)
+  lần 18: trễ 22.8 ms (chờ 0.1 ms)
+  lần 19: trễ 15.8 ms (chờ 0.0 ms)
+  lần 20: trễ 15.8 ms (chờ 0.0 ms)
+   min 13.8 ms · trung vị 17.2 ms · TB 19.1 ms · max 30.9 ms (n=20)
+
+## 4. Kích thước CSDL cloudjudge
++-------------+---------+------+
+| bang        | so_dong | MB   |
++-------------+---------+------+
+| problems    |       0 | 0.05 |
+| submissions |       0 | 0.08 |
+| users       |       0 | 0.05 |
++-------------+---------+------+
+
+## 5. Backup thật lên Swift (db/backup-mysql.sh, đúng như cron 02:00 trên primary, credential cj-backup)
+2026-11-10T04:14:39Z backup OK: swift backups/mysql/20261110-0414.sql.gz (1456 byte, tự xóa sau 7 ngày)
+thời gian backup (đo trên VM primary): 950 ms, mã thoát 0
+metric cho Prometheus:
+cj_backup_last_success_timestamp_seconds 1794284079
+cj_backup_last_size_bytes 1456
+-- object trong backups/mysql/ (mới nhất cuối):
+mysql/20261110-0412.sql.gz 1452 2026-11-10T04:12:18.838480
+mysql/20261110-0413.sql.gz 1450 2026-11-10T04:13:14.676350
+mysql/20261110-0414.sql.gz 1456 2026-11-10T04:14:38.928750
+
+## 6. Restore bản mới nhất vào PRIMARY (db/restore-mysql.sh latest), replica tự nhận qua binlog
+đã tải backups/mysql/20261110-0414.sql.gz
+Trước khi khôi phục:
++-------+----------+-------------+
+| users | problems | submissions |
++-------+----------+-------------+
+|     0 |        0 |           0 |
++-------+----------+-------------+
+Sau khi khôi phục:
++-------+----------+-------------+
+| users | problems | submissions |
++-------+----------+-------------+
+|     0 |        0 |           0 |
++-------+----------+-------------+
+thời gian restore (gồm tải từ Swift, đo trên VM primary): 2520 ms, mã thoát 0
+replica khớp lại: có; giao dịch cuối trễ 339.2 ms; chờ thêm 0.0 ms
+PRIMARY: users=0 problems=0 submissions=0
+REPLICA: users=0 problems=0 submissions=0
+
+## 7. Cảnh báo ReplicationBroken: bỏ qua (chạy lại với ALERT=1 khi đã có cj-mon)
+
+## 8. Trạng thái cuối
+                  Source_Host: 10.0.3.10
+           Replica_IO_Running: Yes
+          Replica_SQL_Running: Yes
+        Seconds_Behind_Source: 0
+                Last_IO_Error: 
+               Last_SQL_Error: 
+                Auto_Position: 1
+(Prometheus chưa thấy cj_backup_last_success_timestamp_seconds hoặc chưa có cj-mon)
+XONG
