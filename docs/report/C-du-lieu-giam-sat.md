@@ -105,7 +105,8 @@ Alertmanager định tuyến theo nhãn `action`: `worker_up` → `POST` vào `a
 - Grafana: hàng 1 cho phần demo co giãn (bài đang chờ, số worker, số web, bài chờ lâu nhất, bài nhận/chấm mỗi phút); hàng 2 chấm bài (p50/p95 thời gian chấm, cảnh báo đang bật); hàng 3 hạ tầng (CPU/RAM theo máy, trạng thái mục tiêu, replication, tuổi bản backup, truy vấn MySQL).
 - Đã chạy thật ở local (`docs/evidence/C-local-monitoring.txt`): thư thử và thư `ReplicationBroken` tới Gmail; `ACTION=worker_up` gọi đúng URL. Khi thử cắt luồng nhân bản (`STOP REPLICA SQL_THREAD`): pending sau ~10 s, firing sau ~72 s (`for: 1m`), tự hết ~11 s sau khi nối lại (`docs/evidence/C-local-replication-broken.txt`).
 - Gặp khi chạy local: phần mềm diệt virus quét thư (Avast Mail Shield) ký lại TLS của `smtp.gmail.com` → Alertmanager báo `x509: certificate signed by unknown authority`. Cách xử lý là cho container tin thêm CA đó (`monitoring/docker-compose.local-ca.yml`), **không tắt kiểm tra TLS**. Trên cụm không có lớp chặn này.
-- Minh chứng cụm ⏳: ảnh Grafana lúc chạy loadtest 60 bài; ảnh hộp thư có `QueueHigh` / `SubmissionStuck`; `openstack stack resource list -n 2 cj-app` thấy worker 1 → 2 → 3 → 1.
+- Đã chạy thật trên cụm (10/11): stack `cj-mon`, Prometheus thấy 15/15 mục tiêu; cắt luồng nhân bản → pending 6,3 s, firing 66,2 s, thư FIRING rồi RESOLVED tới Gmail lúc 21:44 (`docs/evidence/C-cluster-alert.txt`, `C-hm7-gmail.txt`); dashboard Grafana `C-hm7-grafana.png`.
+- Minh chứng cụm còn ⏳ (cần B chạy loadtest có tự mở rộng): ảnh Grafana lúc chạy loadtest 60 bài; ảnh hộp thư có `QueueHigh` / `SubmissionStuck`; `openstack stack resource list -n 2 cj-app` thấy worker 1 → 2 → 3 → 1.
 
 ## 5. Hạng mục 8 – Chi phí
 Chi tiết, cách tính và nguồn giá: [`docs/cost/chi-phi.md`](../cost/chi-phi.md).

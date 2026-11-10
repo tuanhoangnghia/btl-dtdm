@@ -69,7 +69,7 @@ docs/cost/
 - [x] Stack `cj-data` trên cụm: **UPDATE_COMPLETE 10/11**, Primary (az1) + Replica (az2) + RabbitMQ đủ 3 máy sau khi A đặt `disk_allocation_ratio = 2.0` (Placement DISK_GB 45/90 mỗi compute)
 - [x] Backup lên Swift: `backup-mysql.sh` chạy thật 10/11 (0,95 s, object `backups/mysql/…sql.gz`, tự xóa sau 7 ngày); cron 02:00 đã cài sẵn trên primary
 - [x] Stack `cj-mon` với alarm_url thật: **CREATE_COMPLETE 10/11 tối** (~14 s Heat + cloud-init), 15/15 mục tiêu `up`, email 0 lỗi; alarm_url lấy từ `app-alarms.env` của B
-- [x] Minh chứng HM 3, 4 trên cụm: `docs/evidence/C-cluster-evidence.txt` (10/11, có RESTORE=1). HM 7: `docs/evidence/C-cluster-alert.txt` (ALERT=1). Còn ảnh Grafana + hộp thư (C tự chụp)
+- [x] Minh chứng HM 3, 4 trên cụm: `docs/evidence/C-cluster-evidence.txt` (10/11, có RESTORE=1). HM 7: `docs/evidence/C-cluster-alert.txt` (ALERT=1), `C-hm7-gmail.txt` (2 thư), `C-hm7-grafana.png`
 - [ ] Báo cáo ghép + PDF
 
 ## Nhật ký
@@ -81,6 +81,7 @@ docs/cost/
   - `scripts/cj-health.sh` lần đầu trên cụm: mục replication FAIL giả (`IO= SQL=`) do cùng lỗi `-J` không nhận `-o` (host key bastion) → đổi sang `ProxyCommand`; chạy lại tất cả OK → `docs/evidence/C-cluster-health.txt`.
   - Grafana: tunnel từ laptop `ssh -i ~/.ssh/cloudjudge -J cj-controller -L 3000:10.0.2.11:3000 cj@172.24.4.131` → `http://localhost:3000` (`/api/health` OK, Grafana 11.3.0); mật khẩu admin trong `/etc/cj-mon/grafana/admin.pw` trên cj-monitor.
   - Không tắt cụm (B đang giữ khóa).
+  - 22:05: C nhận 2 thư ở Gmail lúc 21:44 (FIRING rồi RESOLVED ReplicationBroken, `instance = cj-mysql-replica`) → chép nguyên văn vào `docs/evidence/C-hm7-gmail.txt` (che địa chỉ Gmail); C chụp dashboard qua đường hầm → `C-hm7-grafana.png`. Đã đóng đường hầm, xóa file mật khẩu tạm.
 - 10/11 (C, trên cụm, đợt 4, ~10:50–11:20 giờ VN, C giữ khóa):
   - Cụm đang bật, không ai giữ khóa → C acquire. A đã đặt `disk_allocation_ratio = 2.0` (`/etc/kolla/config/nova.conf` trên controller, chưa commit vào repo); Placement: mỗi compute DISK_GB 45/90.
   - `deploy-cj-data.sh` (update): Heat tạo lại `cj-mysql-replica` (az2), **CJ_DATA_READY sau 66 s**, stack UPDATE_COMPLETE. Script lại báo "primary quá 15 phút": primary/rabbitmq chỉ boot lại nên console log mới không có READY → sửa script, coi "Cloud-init … finished" mà không có READY là máy cũ boot lại.

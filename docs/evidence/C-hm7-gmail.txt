@@ -1,0 +1,42 @@
+# HM 7 – Thư cảnh báo thật nhận ở Gmail (cụm, 10/11/2026, giờ VN = UTC+7)
+# Chép nguyên văn từ hộp thư của C (địa chỉ Gmail đã che bớt). Gửi bởi Alertmanager trên cj-monitor (10.0.2.11) qua smtp.gmail.com.
+# Nguyên nhân: db/cluster-evidence.sh với ALERT=1 (docs/evidence/C-cluster-alert.txt):
+#   14:42:53 UTC STOP REPLICA SQL_THREAD → 14:43:59 UTC firing (= 21:43:59 giờ VN) → thư 1
+#   14:44:10 UTC START REPLICA SQL_THREAD → 14:44:20 UTC hết cảnh báo (= 21:44:20 giờ VN) → thư 2
+# Cả 2 thư hiện 9:44 PM, khớp với 2 mốc trên. Bộ đếm alertmanager_notifications_total{integration="email"} = 2, failed = 0.
+
+========== Thư 1 ==========
+[CloudJudge] FIRING: ReplicationBroken (critical)
+CloudJudge <nmtr…@gmail.com>
+9:44 PM
+to me
+
+1 alert for alertname=ReplicationBroken
+View in Alertmanager
+[1] Firing
+Labels
+alertname = ReplicationBroken
+cluster = cloudjudge
+instance = cj-mysql-replica
+severity = critical
+Annotations
+summary = Replication MySQL trên cj-mysql-replica đã dừng
+Source
+
+========== Thư 2 ==========
+[CloudJudge] RESOLVED: ReplicationBroken (critical)
+CloudJudge <nmtr…@gmail.com>
+9:44 PM
+to me
+
+1 alert for alertname=ReplicationBroken
+View in Alertmanager
+[1] Resolved
+Labels
+alertname = ReplicationBroken
+cluster = cloudjudge
+instance = cj-mysql-replica
+severity = critical
+Annotations
+summary = Replication MySQL trên cj-mysql-replica đã dừng
+Source
