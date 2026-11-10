@@ -14,6 +14,7 @@ import logging
 import signal
 import socket
 import sys
+import threading
 import time
 
 from sqlalchemy import select, update
@@ -28,10 +29,11 @@ from .sandbox import DockerSandbox
 HOST = socket.gethostname()
 log = logging.getLogger("cj-worker")
 S, P = db.submissions, db.problems
+HEARTBEAT_S = 30
 
 
 class Stop(BaseException):
-    """Nhận SIGTERM (systemd dừng dịch vụ, Heat xóa máy khi scale in)."""
+    """Nhận SIGTERM (systemd dừng dịch vụ). Heat xóa VM khi scale in thì không có tín hiệu này."""
 
 
 class TestCache:
@@ -105,15 +107,39 @@ def consume(cfg: Config, judge: Judge) -> None:
 
     from ..common.mq import connection_params, declare_queue
 
+    judging = threading.Lock()      # mất kết nối giữa lúc chấm thì bài mới phải chờ bài cũ (máy 1 vCPU, đo giờ cho đúng)
     backoff = 1
     while True:
         conn = None
         try:
-            # heartbeat dài: callback chấm bài chạy đồng bộ (tới ~1 phút), trong lúc đó pika không gửi heartbeat
-            conn = pika.BlockingConnection(connection_params(cfg, heartbeat=300))
+            # Heartbeat ngắn để broker sớm biết worker đã chết (Heat xóa VM khi scale in không để lại FIN/SIGTERM):
+            # chưa biết thì broker vẫn giao bài cho máy đã chết. Vì vậy bài được chấm ở luồng riêng, luồng này
+            # giữ kết nối và gửi heartbeat; pika không an toàn đa luồng nên ack/nack phải chuyển về luồng này.
+            conn = pika.BlockingConnection(connection_params(cfg, heartbeat=HEARTBEAT_S))
             ch = conn.channel()
             declare_queue(ch, cfg)
             ch.basic_qos(prefetch_count=1)
+
+            def reply(connection, channel, fn, tag, **kw):
+                def run():
+                    if channel.is_open:
+                        fn(tag, **kw)
+                try:
+                    connection.add_callback_threadsafe(run)
+                except pika.exceptions.AMQPError:
+                    log.warning("mất kết nối trước khi trả lời broker, thông điệp %s sẽ được giao lại", tag)
+
+            def work(connection, channel, tag, sub_id):
+                with judging:
+                    try:
+                        judge.handle(sub_id)
+                    except Exception:
+                        # thường là mất DB: trả thông điệp lại hàng đợi, nghỉ một chút để không quay vòng nhanh
+                        log.exception("không xử lý được submission %s, trả lại hàng đợi", sub_id)
+                        time.sleep(5)
+                        reply(connection, channel, channel.basic_nack, tag, requeue=True)
+                        return
+                    reply(connection, channel, channel.basic_ack, tag)
 
             def on_message(channel, method, _props, body):
                 try:
@@ -122,17 +148,7 @@ def consume(cfg: Config, judge: Judge) -> None:
                     log.error("thông điệp sai định dạng, bỏ: %r", body[:200])
                     channel.basic_ack(method.delivery_tag)
                     return
-                try:
-                    judge.handle(sub_id)
-                except Stop:
-                    raise
-                except Exception:
-                    # thường là mất DB: trả thông điệp lại hàng đợi, nghỉ một chút để không quay vòng nhanh
-                    log.exception("không xử lý được submission %s, trả lại hàng đợi", sub_id)
-                    channel.basic_nack(method.delivery_tag, requeue=True)
-                    time.sleep(5)
-                    return
-                channel.basic_ack(method.delivery_tag)
+                threading.Thread(target=work, args=(conn, channel, method.delivery_tag, sub_id), daemon=True).start()
 
             ch.basic_consume(queue=cfg.mq_queue, on_message_callback=on_message)
             log.info("đang chờ bài ở queue %s trên %s:%s", cfg.mq_queue, cfg.mq_host, cfg.mq_port)

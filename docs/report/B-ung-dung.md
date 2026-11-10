@@ -37,7 +37,7 @@ Prometheus scrape web :8000/metrics, worker :9200/metrics, RabbitMQ → Alertman
 ## 3. Hàng đợi và đảm bảo giao nhận
 - Queue `submissions` durable, message persistent (`delivery_mode=2`). Web bật **publisher confirm**, nên chỉ trả lời "đã nhận" khi broker đã ghi thông điệp. Publish lỗi thì bài được đánh dấu `SYSTEM_ERROR` và người dùng thấy lỗi ngay (không có bài "treo" PENDING mãi).
 - Worker dùng `prefetch_count=1` và **ack sau khi ghi kết quả vào DB**, tức giao nhận **at-least-once**. Cập nhật là **idempotent** theo `submission_id`: bài đã có kết quả cuối thì bỏ qua; bài đang `RUNNING` (máy trước chết giữa chừng) thì chấm lại.
-- Khi scale in, Heat xóa VM → systemd gửi SIGTERM → worker đóng kết nối mà không ack, nên bài đang chấm dở quay lại hàng đợi cho worker khác.
+- Khi scale in, Heat xóa VM ngay (không có SIGTERM, không đóng TCP), nên broker chỉ biết worker đã chết khi hết **heartbeat**. Trong khoảng đó broker vẫn giao bài cho máy đã chết. Vì vậy worker chấm bài ở luồng riêng để luồng chính luôn gửi heartbeat, cho phép đặt heartbeat 30 s; khi broker phát hiện, bài chưa ack quay lại hàng đợi cho worker khác. Bản đầu đặt heartbeat 300 s (luồng chấm chặn pika) và bài kẹt nhiều phút, phát hiện khi đo scale in trên cụm.
 - Lỗi hệ thống khi chấm (thiếu object, Docker lỗi) → `SYSTEM_ERROR` rồi ack, để một bài lỗi không quay vòng mãi. Mất DB → trả thông điệp lại hàng đợi (nack requeue) và nghỉ 5 giây.
 
 ## 4. Sandbox chấm bài

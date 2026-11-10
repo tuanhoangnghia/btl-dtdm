@@ -1,10 +1,13 @@
 """Worker: grader + Judge.handle với sandbox chạy thẳng bằng Python cục bộ (không Docker), qua cj-run thật."""
 import contextlib
 import json
+import queue
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import types
 from pathlib import Path
 
 import pytest
@@ -156,3 +159,86 @@ def test_cj_run_reports_ok_tle_re():
     assert res["status"] == "TLE" and res["time_ms"] >= 300
     res, _ = run(15000, "import sys; sys.exit(5)")
     assert res["status"] == "RE" and res["exit"] == 5
+
+
+class _FakeChannel:
+    is_open = True
+
+    def __init__(self):
+        self.acks, self.nacks, self.on_message = [], [], None
+
+    def basic_qos(self, prefetch_count):
+        assert prefetch_count == 1
+
+    def basic_consume(self, queue, on_message_callback):
+        self.on_message = on_message_callback
+
+    def basic_ack(self, tag):
+        self.acks.append((tag, threading.current_thread()))
+
+    def basic_nack(self, tag, requeue):
+        self.nacks.append((tag, requeue, threading.current_thread()))
+
+
+def _run_consume(monkeypatch, cfg, handle):
+    """consume() với pika giả: giao 1 thông điệp, xử lý callback như luồng kết nối thật, rồi nhận SIGTERM."""
+    import pika
+
+    from cloudjudge.common import mq
+    from cloudjudge.worker import main as worker_main
+
+    chan = _FakeChannel()
+    pending = queue.Queue()
+    seen = {}
+
+    class Conn:
+        is_open = False
+
+        def channel(self):
+            return chan
+
+        def add_callback_threadsafe(self, cb):
+            pending.put(cb)
+
+    def start_consuming():
+        chan.on_message(chan, types.SimpleNamespace(delivery_tag=7), None, b'{"submission_id": 5}')
+        seen["returned_before_callback"] = pending.empty()
+        pending.get(timeout=30)()
+        raise worker_main.Stop()
+
+    chan.start_consuming = start_consuming
+
+    def params(_cfg, heartbeat):
+        seen["heartbeat"] = heartbeat
+
+    monkeypatch.setattr(pika, "BlockingConnection", lambda _p: Conn())
+    monkeypatch.setattr(mq, "connection_params", params)
+    monkeypatch.setattr(mq, "declare_queue", lambda ch, c: None)
+    monkeypatch.setattr(worker_main.time, "sleep", lambda s: None)
+    worker_main.consume(cfg, types.SimpleNamespace(handle=handle))
+    return chan, seen
+
+
+def test_consume_judges_off_the_connection_thread_and_acks_on_it(monkeypatch, cfg):
+    release = threading.Event()
+    judged = []
+
+    def handle(sub_id):
+        release.wait(10)
+        judged.append((sub_id, threading.current_thread()))
+
+    threading.Timer(0.2, release.set).start()
+    chan, seen = _run_consume(monkeypatch, cfg, handle)
+    assert seen["heartbeat"] <= 60
+    assert seen["returned_before_callback"]      # callback không chặn luồng gửi heartbeat
+    assert judged[0][0] == 5 and judged[0][1] is not threading.current_thread()
+    assert [t for t, _ in chan.acks] == [7] and chan.acks[0][1] is threading.current_thread()
+
+
+def test_consume_requeues_when_handling_fails(monkeypatch, cfg):
+    def handle(sub_id):
+        raise RuntimeError("mất DB")
+
+    chan, _ = _run_consume(monkeypatch, cfg, handle)
+    assert chan.acks == []
+    assert [(t, r) for t, r, _ in chan.nacks] == [(7, True)]
