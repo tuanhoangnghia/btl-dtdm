@@ -16,7 +16,7 @@
 | IP ngoài đang gắn VM | 0,005 USD/giờ/IP | controller (static) + 2 compute (ephemeral). Catalog ghi bậc 0–720 giờ/tháng giá 0 (có thể là ưu đãi theo billing account); bảng này vẫn tính 0,005 cho chắc |
 | IP static để không (máy tắt) | 0,011 USD/giờ | `cj-ctl-ip` vẫn tính khi cụm tắt |
 | pd-balanced | 0,110 USD/GiB-tháng | tính **cả khi máy tắt** |
-| pd-standard | 0,044 USD/GiB-tháng | đĩa Swift + 2 đĩa của VM cũ |
+| pd-standard | 0,044 USD/GiB-tháng | đĩa Swift |
 | Snapshot standard, lưu ở vùng asia-southeast1 | 0,061 USD/GiB-tháng | tính theo dung lượng thật đã lưu (không theo cỡ đĩa); lưu đa vùng `asia` là 0,083 |
 | Egress Internet Singapore → APAC (gồm VN) | 0,12 USD/GiB (1 TiB đầu) | demo chỉ vài GB |
 | AWS EC2 t3.small (ap-southeast-1) | 0,0264 USD/giờ | 2 vCPU, 2 GB |
@@ -28,16 +28,16 @@
 
 Tài nguyên thật trong project (đọc bằng `gcloud compute disks/snapshots/addresses list` ngày 10/11/2026):
 - pd-balanced **246 GiB**: `os-controller` 100 + `os-controller-cinder` 50 + `os-compute-1` 48 + `os-compute-2` 48.
-- pd-standard **90 GiB**: `os-controller-swift` 30 + **2 đĩa của 2 VM cũ** `compute`, `controller` (zone b, 30 GiB mỗi cái, máy TERMINATED từ 28/09 nhưng đĩa vẫn tính tiền).
+- pd-standard **30 GiB**: `os-controller-swift`. (Trước 10/11 còn 2 đĩa 30 GiB của 2 VM cũ `compute`, `controller` ở zone b, do C tạo thử 23/09, tắt từ 28/09 nhưng đĩa vẫn tính tiền; **đã xóa tối 10/11**.)
 - Snapshot mốc `m2` (29/10, 5 cái, lưu ở asia-southeast1): dung lượng thật **≈ 17,9 GiB** (ctl-boot 7,4 + c1-boot 5,7 + c2-boot 4,8; cinder và swift gần 0).
 - 1 IP static `cj-ctl-ip`.
 
 | Khoản | Cách tính | Ước tính |
 |---|---|---|
 | Cụm **đang chạy** | 0,3232 + 2 × 0,1616 + 3 × 0,005 (IP) | **≈ 0,66 USD/giờ ≈ 17.200 đ/giờ** |
-| Cụm **đang tắt** (vẫn tính) | đĩa 246 × 0,11 + 90 × 0,044 = 31,0 USD/tháng; snapshot 17,9 × 0,061 = 1,1 USD/tháng; IP static 0,011 × 24 | **≈ 1,32 USD/ngày ≈ 34.000 đ/ngày** |
-| Trong đó: 2 đĩa VM cũ | 60 × 0,044 = 2,64 USD/tháng | ≈ 0,09 USD/ngày ≈ 2.300 đ/ngày (≈ 69.000 đ/tháng): xóa được nếu nhóm không cần |
-| Dự kiến 28/10 → 22/11 (26 ngày), ~150 giờ chạy | 150 × 0,66 + 26 × 1,32 | **≈ 133 USD ≈ 3,5 triệu đ** |
+| Cụm **đang tắt** (vẫn tính) | đĩa 246 × 0,11 + 30 × 0,044 = 28,4 USD/tháng; snapshot 17,9 × 0,061 = 1,1 USD/tháng; IP static 0,011 × 24 | **≈ 1,23 USD/ngày ≈ 32.000 đ/ngày** (trước 10/11: 1,32) |
+| 2 đĩa VM cũ (đã xóa 10/11) | 60 × 0,044 = 2,64 USD/tháng | ≈ 0,09 USD/ngày ≈ 2.300 đ/ngày, chỉ tính 28/10 → 10/11 |
+| Dự kiến 28/10 → 22/11 (26 ngày), ~150 giờ chạy | 150 × 0,66 + 13 × 1,32 + 13 × 1,23 | **≈ 132 USD ≈ 3,4 triệu đ** |
 
 Theo dõi số thật (điền từ Billing → Reports, lọc project `omega-dahlia-468315-f6`):
 

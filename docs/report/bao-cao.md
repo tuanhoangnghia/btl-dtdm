@@ -173,8 +173,8 @@ Chi tiết, cách tính và nguồn giá: `docs/cost/chi-phi.md`. Tỷ giá 1 US
 | Khoản | Ước tính |
 |---|---|
 | Cụm đang chạy (3 VM + 3 IP) | ≈ 0,66 USD/giờ ≈ 17.200 đ/giờ |
-| Cụm đang tắt (đĩa 246 GiB pd-balanced + 90 GiB pd-standard, snapshot ≈ 18 GiB, IP tĩnh) | ≈ 1,32 USD/ngày ≈ 34.000 đ/ngày |
-| Dự kiến 28/10 → 22/11 (~150 giờ chạy) | ≈ 133 USD ≈ 3,5 triệu đ |
+| Cụm đang tắt (đĩa 246 GiB pd-balanced + 30 GiB pd-standard, snapshot ≈ 18 GiB, IP tĩnh) | ≈ 1,23 USD/ngày ≈ 32.000 đ/ngày |
+| Dự kiến 28/10 → 22/11 (~150 giờ chạy) | ≈ 132 USD ≈ 3,4 triệu đ |
 | Số thật trên Billing | ⏳ (ảnh Billing → Reports) |
 
 **Ba phương án chạy thật 24/7** (mỗi tháng, gồm nhân lực theo kỹ sư 20 triệu đ/tháng):

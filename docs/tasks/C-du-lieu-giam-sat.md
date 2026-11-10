@@ -85,6 +85,8 @@ docs/cost/
   - Audit log GCP: 2 VM cũ `compute`/`controller` (zone b) do chính tài khoản của C tạo 23/09 (không phải của A/B) → C tự xóa trên Console (đĩa `autoDelete=True` nên đi cùng VM).
   - Dọn ⏳ cũ trong báo cáo C (HM 3, 4 đã có minh chứng cụm). Còn ⏳: loadtest có tự mở rộng (cần B), số Billing thật.
   - 22:23: B đã nhả khóa, không ai giữ → nhả khóa C, tắt cụm bằng `CJ_ME=C gcp-down.sh` (5 VM TERMINATED).
+  - C đã xóa 2 VM cũ trên Console; `gcloud` xác nhận chỉ còn 3 máy `os-*`, pd-standard còn 30 GiB. Chi phí lúc tắt 1,32 → **1,23 USD/ngày**, dự kiến cả dự án 133 → **132 USD ≈ 3,4 triệu đ** (`chi-phi.md`, `bao-cao.md`, báo cáo C, lời thoại demo).
+  - Đang chờ: B trả lời về loadtest có tự mở rộng (C mở Grafana chụp); C lấy số Billing sau.
 - 10/11 (C, trên cụm, đợt 4, ~10:50–11:20 giờ VN, C giữ khóa):
   - Cụm đang bật, không ai giữ khóa → C acquire. A đã đặt `disk_allocation_ratio = 2.0` (`/etc/kolla/config/nova.conf` trên controller, chưa commit vào repo); Placement: mỗi compute DISK_GB 45/90.
   - `deploy-cj-data.sh` (update): Heat tạo lại `cj-mysql-replica` (az2), **CJ_DATA_READY sau 66 s**, stack UPDATE_COMPLETE. Script lại báo "primary quá 15 phút": primary/rabbitmq chỉ boot lại nên console log mới không có READY → sửa script, coi "Cloud-init … finished" mà không có READY là máy cũ boot lại.

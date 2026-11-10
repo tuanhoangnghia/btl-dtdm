@@ -120,7 +120,7 @@ INSERT INTO cj_check.ping (note) VALUES ('ghi vao replica');
 
 **Nói:** "Nếu chạy thật 24/7 thì so ba phương án: AWS khoảng 5,9 triệu một tháng, máy chủ cũ của trường khoảng 6,7 triệu, còn OpenStack trên máy ảo Google như demo đắt nhất, khoảng 14,9 triệu. Đắt nhất vì phải trả cho ba máy chạy cả ngày bất kể tải, lại thêm một lớp ảo hóa lồng. Khi tính cả tiền nhân lực vận hành, dịch vụ có quản lý như AWS rẻ nhất. Cách dựng của nhóm phù hợp để học cách một đám mây hoạt động, không phải để tiết kiệm."
 
-**Nếu Billing chưa có số:** dùng mục 2 của `chi-phi.md` (ước tính ≈ 133 USD ≈ 3,5 triệu đ cho cả dự án, trong tín dụng dùng thử ≈ 297 USD).
+**Nếu Billing chưa có số:** dùng mục 2 của `chi-phi.md` (ước tính ≈ 132 USD ≈ 3,4 triệu đ cho cả dự án, trong tín dụng dùng thử ≈ 297 USD).
 
 ---
 

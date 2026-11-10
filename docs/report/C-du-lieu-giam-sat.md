@@ -117,7 +117,7 @@ Chi tiết, cách tính và nguồn giá: [`docs/cost/chi-phi.md`](../cost/chi-p
 | OpenStack trên 3 máy chủ cũ của trường | ≈ 6,7 triệu đ |
 | AWS Singapore (EC2 + ALB + NAT + RDS Multi-AZ + SQS + S3 + CloudWatch) | ≈ 5,9 triệu đ |
 
-Chi phí thật của dự án ⏳ (ảnh Billing): dự kiến ≈ 133 USD ≈ 3,5 triệu đ trên tín dụng dùng thử (~150 giờ chạy cụm × 0,66 USD + đĩa, snapshot, IP ≈ 1,32 USD/ngày cả khi tắt). Đơn giá GCP lấy từ Cloud Billing Catalog API (bảng giá chính thức).
+Chi phí thật của dự án ⏳ (ảnh Billing): dự kiến ≈ 132 USD ≈ 3,4 triệu đ trên tín dụng dùng thử (~150 giờ chạy cụm × 0,66 USD + đĩa, snapshot, IP ≈ 1,23 USD/ngày cả khi tắt). Đơn giá GCP lấy từ Cloud Billing Catalog API (bảng giá chính thức).
 
 ## 6. Lý giải lựa chọn (bổ sung cho mục 5 của báo cáo)
 
