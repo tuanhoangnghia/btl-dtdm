@@ -127,7 +127,7 @@ if [ "${RESTORE:-0}" = 1 ]; then
   h "6. Restore bản mới nhất vào PRIMARY (db/restore-mysql.sh latest), replica tự nhận qua binlog"
   on "$PRIMARY" 'sudo bash -s' <<'EOF'
 s=$(date +%s%N)
-CONFIRM=YES bash /opt/cj-db/restore-mysql.sh latest; rc=$?
+CONFIRM=YES bash /opt/cj-db/restore-mysql.sh latest < /dev/null; rc=$?   # < /dev/null: không cho nó nuốt phần còn lại của heredoc
 echo "thời gian restore (gồm tải từ Swift, đo trên VM primary): $(( ($(date +%s%N) - s) / 1000000 )) ms, mã thoát $rc"
 EOF
   g=$(SQLQ P "SELECT REPLACE(@@GLOBAL.gtid_executed, '\n', '')")
