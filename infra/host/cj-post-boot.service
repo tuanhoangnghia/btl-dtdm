@@ -1,0 +1,13 @@
+[Unit]
+Description=CloudJudge: khôi phục LB Octavia sau khi bật cụm nguội
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cj
+ExecStart=/home/cj/cloudjudge/infra/bootstrap/post-boot.sh
+TimeoutStartSec=3000
+
+[Install]
+WantedBy=multi-user.target

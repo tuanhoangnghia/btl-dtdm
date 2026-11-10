@@ -55,12 +55,15 @@ Swift 2.33 từ gói Ubuntu, 1 node/1 đĩa, **replicas=1**, xác thực Keyston
 | `50-swift-acl.sh` | 4 container + ACL theo CONTRACT 8.1 |
 | `55-test-acl.sh` | Minh chứng hạng mục 5: worker xóa/ghi object bị 403 |
 | `05-add-user.sh` | User Linux cho thành viên: `sudo bash 05-add-user.sh <linux> <openstack> "<ssh pubkey>"` |
+| `lb-recover.sh [lb]` | Khôi phục LB Octavia đang `ERROR`: xóa VM của mọi amphora rồi `loadbalancer failover` (~3 phút). Xem mục 7 |
+| `post-boot.sh` | Chờ đủ 2 compute up + health manager xong việc, rồi tự gọi `lb-recover.sh` nếu LB còn `ERROR`. Chạy bởi `infra/host/cj-post-boot.service` (xem mục 7) |
 
 ## 6. Stack Heat mạng – `heat/cj-net.yaml`, `heat/deploy-cj-net.sh`
 3 network + router (SNAT) + 6 security group + bastion (floating IP, Tailscale subnet router tùy chọn nếu có `TS_BASTION_KEY` trong `~/secrets/infra.env`).
 
 ## 7. Vận hành hằng ngày
 - Bật: `bash infra/gcp/gcp-up.sh` (chờ ~5 phút; Kolla và VM OpenStack tự lên). Kiểm: `ssh cj-ctl`, `openstack compute service list`, `network agent list`.
+- **LB `ERROR` sau khi bật cụm nguội (lỗi đã biết):** health manager failover amphora lúc `nova-compute` chưa up (`No valid host`), và cụm chỉ có 2 compute nên server group anti-affinity cứng không cho amphora thay thế vào chỗ VM cũ. Triệu chứng: `openstack loadbalancer show cj-lb` báo `ERROR`; web vẫn chạy nhưng không đổi được member (`web_up`, rolling update lỗi). Xử lý: `bash infra/bootstrap/lb-recover.sh` (~3 phút). Tự động: cài `infra/host/cj-post-boot.service` trên controller (`sudo cp ... /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable cj-post-boot`), nó chạy `post-boot.sh` mỗi lần controller boot (~8 phút sau khi bật; xem `journalctl -u cj-post-boot`). Script cần có ở `/home/cj/cloudjudge/infra/bootstrap/`.
 - Tắt: `CJ_ME=A bash infra/gcp/gcp-down.sh` (sau khi `cj-lock.sh status` không có ai khác đang dùng).
 - Snapshot đĩa sau mỗi mốc: xem `docs/tasks/A-ha-tang.md` mục Nhật ký.
 - Lỗi thường gặp: `docs/tasks/A-ha-tang.md` (Nhật ký 29/10) và `KE_HOACH_TRIEN_KHAI.md` mục 15.3.
