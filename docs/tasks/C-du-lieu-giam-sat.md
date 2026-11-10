@@ -64,15 +64,23 @@ docs/cost/
 - [x] Monitoring local + email thật: 10/11 thư thử tới Gmail OK, alarm_url (webhook) OK, ReplicationBroken firing sau ~72 s rồi tự hết → `docs/evidence/C-local-monitoring.txt`, `C-local-replication-broken.txt`
 - [x] Rules + dashboard: 6 luật kế hoạch + 3 luật dữ liệu, unit test promtool, dashboard 20 panel; `check.sh` TẤT CẢ OK 10/11; tên metric replication đã xác minh (khớp)
 - [ ] Bảng chi phí: `docs/cost/chi-phi.md`, giá GCP đã kiểm bằng Cloud Billing Catalog API 10/11 (3 phương án: 14,9 / 6,7 / 5,9 triệu đ/tháng); còn số thật + ảnh Billing (C tự xem được), giá AWS
-- [ ] `scripts/cj-health.sh`: đã viết, chưa chạy trên cụm
+- [x] `scripts/cj-health.sh`: chạy trên cụm 10/11 tối, tất cả OK (`docs/evidence/C-cluster-health.txt`) sau khi sửa lỗi `-J` ở mục replication
 - [ ] Báo cáo: phần C `docs/report/C-du-lieu-giam-sat.md`; **báo cáo chính `docs/report/bao-cao.md` đã ghép đủ 9 mục** (10/11), còn số đo cụm, ảnh, hình kiến trúc PNG, link video; lời thoại demo + vấn đáp `docs/report/C-demo-loi-thoai.md`
 - [x] Stack `cj-data` trên cụm: **UPDATE_COMPLETE 10/11**, Primary (az1) + Replica (az2) + RabbitMQ đủ 3 máy sau khi A đặt `disk_allocation_ratio = 2.0` (Placement DISK_GB 45/90 mỗi compute)
 - [x] Backup lên Swift: `backup-mysql.sh` chạy thật 10/11 (0,95 s, object `backups/mysql/…sql.gz`, tự xóa sau 7 ngày); cron 02:00 đã cài sẵn trên primary
-- [ ] Stack `cj-mon` với alarm_url thật: `heat/cj-mon.yaml` + `deploy-cj-mon.sh` xong; **chờ C thêm SMTP_USER, SMTP_APP_PASSWORD, ALERT_EMAIL_TO vào `/home/cj/secrets/data.env`** (hiện thiếu cả 3); app-alarms.env của B và CJ_MONITOR_AC_* đã có
-- [x] Minh chứng HM 3, 4 trên cụm: `docs/evidence/C-cluster-evidence.txt` (10/11, có RESTORE=1). Còn HM 7 (chạy lại với `ALERT=1` sau cj-mon)
+- [x] Stack `cj-mon` với alarm_url thật: **CREATE_COMPLETE 10/11 tối** (~14 s Heat + cloud-init), 15/15 mục tiêu `up`, email 0 lỗi; alarm_url lấy từ `app-alarms.env` của B
+- [x] Minh chứng HM 3, 4 trên cụm: `docs/evidence/C-cluster-evidence.txt` (10/11, có RESTORE=1). HM 7: `docs/evidence/C-cluster-alert.txt` (ALERT=1). Còn ảnh Grafana + hộp thư (C tự chụp)
 - [ ] Báo cáo ghép + PDF
 
 ## Nhật ký
+- 10/11 tối (C, trên cụm, đợt 5, ~21:00–21:55 giờ VN; B cũng giữ khóa để phát hành 0.1.4, C giữ khóa song song, đã báo B):
+  - A đã commit `disk_allocation_ratio = 2.0` vào `infra/kolla/config/nova.conf` (`5bb0550` trên `main`), kèm `cj-post-boot.service` tự chạy `lb-recover.sh` sau khi bật cụm.
+  - Chép `SMTP_USER`, `SMTP_APP_PASSWORD`, `ALERT_EMAIL_TO` từ `monitoring/local.env` (laptop) sang `/home/cj/secrets/data.env` qua ssh + `sudo tee -a`, không in giá trị; file vẫn `cj:cj 640`.
+  - `deploy-cj-mon.sh`: stack `cj-mon` CREATE_COMPLETE (server 12 s), cloud-init xong, `CJ_MON_READY`. Prometheus 15/15 mục tiêu `up` (node ×7, web ×2, worker, mysql ×2, rabbitmq, prometheus, alertmanager). Không có cảnh báo, chưa gọi alarm_url nào, số máy B giữ nguyên.
+  - `ALERT=1 cluster-evidence.sh` (KHÔNG RESTORE, CSDL đã có dữ liệu B: 7 user, 2 bài, 81 bài nộp) → `docs/evidence/C-cluster-alert.txt`: STOP REPLICA SQL_THREAD → pending 6,3 s → **firing 66,2 s** → bộ đếm thư email 0 → 1 trước khi START lại (≤ 11 s sau firing) → hết cảnh báo 10,2 s sau START; thư thứ 2 là "resolved". Trễ nhân bản lần này trung vị 14,4 ms, max 20,8 ms; backup 1,6 s / 7,5 KB. Đã điền cột Cụm (báo cáo C mục 8, `bao-cao.md` mục 4, 6), kèm số loadtest 1 worker + failover web của B (`B-cum-10-11.txt` trên nhánh B).
+  - `scripts/cj-health.sh` lần đầu trên cụm: mục replication FAIL giả (`IO= SQL=`) do cùng lỗi `-J` không nhận `-o` (host key bastion) → đổi sang `ProxyCommand`; chạy lại tất cả OK → `docs/evidence/C-cluster-health.txt`.
+  - Grafana: tunnel từ laptop `ssh -i ~/.ssh/cloudjudge -J cj-controller -L 3000:10.0.2.11:3000 cj@172.24.4.131` → `http://localhost:3000` (`/api/health` OK, Grafana 11.3.0); mật khẩu admin trong `/etc/cj-mon/grafana/admin.pw` trên cj-monitor.
+  - Không tắt cụm (B đang giữ khóa).
 - 10/11 (C, trên cụm, đợt 4, ~10:50–11:20 giờ VN, C giữ khóa):
   - Cụm đang bật, không ai giữ khóa → C acquire. A đã đặt `disk_allocation_ratio = 2.0` (`/etc/kolla/config/nova.conf` trên controller, chưa commit vào repo); Placement: mỗi compute DISK_GB 45/90.
   - `deploy-cj-data.sh` (update): Heat tạo lại `cj-mysql-replica` (az2), **CJ_DATA_READY sau 66 s**, stack UPDATE_COMPLETE. Script lại báo "primary quá 15 phút": primary/rabbitmq chỉ boot lại nên console log mới không có READY → sửa script, coi "Cloud-init … finished" mà không có READY là máy cũ boot lại.

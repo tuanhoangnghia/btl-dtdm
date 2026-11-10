@@ -1,0 +1,32 @@
+# scripts/cj-health.sh trên cụm, 2026-11-10 ~14:50 UTC (sau khi dựng cj-mon), chạy: ssh -A cj-controller 'bash -s' < scripts/cj-health.sh
+== Host controller
+  OK    container Kolla đều Up, không có unhealthy
+  OK    o-hm0 có IP (Octavia nói chuyện được với amphora)
+== Dịch vụ OpenStack
+  OK    nova service đều up
+  OK    neutron agent đều alive
+== Stack Heat
+  OK    cj-net UPDATE_COMPLETE
+  OK    cj-data UPDATE_COMPLETE
+  OK    cj-app UPDATE_COMPLETE
+  OK    cj-mon CREATE_COMPLETE
+== Máy ảo
+  OK    8 máy đều ACTIVE
+  OK    web = 2
+  OK    worker = 1
+  OK    web ở cả 2 AZ: az1 az2 
+== Lưu trữ
+  OK    volume Cinder đều in-use: cj-mysql-primary-data cj-rabbitmq-data cj-mysql-replica-data 
+  OK    Swift container submissions
+  OK    Swift container testcases
+  OK    Swift container releases
+  OK    Swift container backups
+== Cân bằng tải
+  OK    LB cj-lb ACTIVE ONLINE
+  OK    amphora: ALLOCATED BACKUP ALLOCATED MASTER 
+  OK    http://172.24.4.64/healthz → {"az":"az1","host":"cj-web-b9c73c0f","status":"ok"}
+== Bên trong VM (qua bastion)
+  OK    replication chạy, trễ 0s
+  OK    hàng đợi submissions rỗng
+  OK    Prometheus: mọi mục tiêu up
+  OK    không có cảnh báo đang bật

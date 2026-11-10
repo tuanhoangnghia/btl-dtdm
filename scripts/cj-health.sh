@@ -74,7 +74,8 @@ BASTION=$(out cj-net bastion_fip)
 # VM do Heat tạo lại thường xuyên (host key đổi), nằm trong mạng riêng: không lưu/kiểm host key
 SSHB=(ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR)
 if [ -n "$BASTION" ] && "${SSHB[@]}" "cj@$BASTION" true 2>/dev/null; then
-  rs=$("${SSHB[@]}" -J "cj@$BASTION" cj@10.0.3.11 'sudo cj-mysql -e "SHOW REPLICA STATUS\G"' 2>/dev/null)
+  # Không dùng -J: ssh tới bastion do -J mở KHÔNG nhận các -o ở trên (host key bastion chưa có trong known_hosts → bị từ chối)
+  rs=$("${SSHB[@]}" -o "ProxyCommand=${SSHB[*]} -W %h:%p cj@$BASTION" cj@10.0.3.11 'sudo cj-mysql -e "SHOW REPLICA STATUS\G"' 2>/dev/null)
   io=$(awk -F': ' '/ Replica_IO_Running:/{print $2}' <<<"$rs"); sq=$(awk -F': ' '/ Replica_SQL_Running:/{print $2}' <<<"$rs")
   lag=$(awk -F': ' '/ Seconds_Behind_Source:/{print $2}' <<<"$rs")
   [ "$io$sq" = "YesYes" ] && ok "replication chạy, trễ ${lag}s" || fail "replication: IO=$io SQL=$sq"

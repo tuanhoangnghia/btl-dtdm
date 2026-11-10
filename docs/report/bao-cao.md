@@ -105,8 +105,8 @@ Nền tảng: **OpenStack** (mức +2 điểm). Nhóm tự cài OpenStack bằng
 | 3 | Hai loại lưu trữ trở lên | **Swift** (object): mã nộp, bộ test, bản phát hành, bản backup (tự xóa sau 7 ngày). **Cinder** (block): dữ liệu MySQL primary, replica, RabbitMQ; tạo lại VM thì volume cũ được gắn lại | `openstack volume list --long`, `openstack object list` (`C-cluster-evidence.txt` mục 1, 1b) |
 | 4 | Cơ sở dữ liệu | MySQL 8.4 tự dựng: Primary (az1) → Replica (az2) bằng GTID; replica `super_read_only`; user tối thiểu (`cj_app` không có DELETE/DDL, `cj_ro` chỉ đọc); backup hằng ngày lên Swift bằng danh tính `cj-backup` | Local: `C-local-replication.txt`, `C-local-timings.txt`. Cụm: `C-cluster-evidence.txt` (ghi primary → đọc replica, replica từ chối ghi, backup + restore qua Swift) |
 | 5 | Phân quyền IAM, không nhúng khóa | 4 danh tính Keystone (`cj-web`, `cj-worker`, `cj-backup`, `cj-monitor`), mỗi danh tính 1 application credential giới hạn quyền. Secret truyền qua tham số ẩn của Heat, không có trong Git | `A-acl-test.txt` (worker xóa/ghi object bị 403; monitor đọc dữ liệu bị 403); `git grep` sạch (`A-demo-checks.txt`) |
-| 6 | Cân bằng tải, tự mở rộng | Octavia ACTIVE_STANDBY + health check `/healthz`. Web 2–3 máy theo CPU (2 ASG ghim theo AZ), worker 1–3 máy theo độ dài hàng đợi; Alertmanager gọi `alarm_url` của `OS::Heat::ScalingPolicy` | `B-cum-31-10.txt` (alarm_url → thêm/bớt worker); loadtest 60 bài, worker 1→2→3→1, tắt web az1 ⏳ |
-| 7 | Giám sát, có cảnh báo | Prometheus tìm VM bằng `openstack_sd` + metadata `cj_role`; 9 luật (QueueHigh, QueueIdle, WebCPUHigh, WebCPULow, SubmissionStuck, InstanceDown, MySQLDown, ReplicationBroken, BackupStale) có unit test; email qua Gmail; dashboard Grafana 20 panel | Local: `C-local-monitoring.txt`, `C-local-replication-broken.txt` (thư thật tới Gmail). Cụm: ảnh Grafana + hộp thư ⏳ |
+| 6 | Cân bằng tải, tự mở rộng | Octavia ACTIVE_STANDBY + health check `/healthz`. Web 2–3 máy theo CPU (2 ASG ghim theo AZ), worker 1–3 máy theo độ dài hàng đợi; Alertmanager gọi `alarm_url` của `OS::Heat::ScalingPolicy` | `B-cum-31-10.txt` (alarm_url → thêm/bớt worker); `B-cum-10-11.txt` (loadtest 60 bài 1 worker, tắt web az1); loadtest có tự mở rộng (worker 1→2→3→1 qua Alertmanager) ⏳ |
+| 7 | Giám sát, có cảnh báo | Prometheus tìm VM bằng `openstack_sd` + metadata `cj_role`; 9 luật (QueueHigh, QueueIdle, WebCPUHigh, WebCPULow, SubmissionStuck, InstanceDown, MySQLDown, ReplicationBroken, BackupStale) có unit test; email qua Gmail; dashboard Grafana 20 panel | Local: `C-local-monitoring.txt`, `C-local-replication-broken.txt` (thư thật tới Gmail). Cụm: `C-cluster-alert.txt` (15/15 mục tiêu `up`, ReplicationBroken firing → thư); ảnh Grafana + hộp thư ⏳ |
 | 8 | Ước tính chi phí | Chi phí thật trên tín dụng GCP + 3 phương án chạy 24/7, giá GCP lấy từ bảng giá chính thức (Cloud Billing Catalog API) | `docs/cost/chi-phi.md`; ảnh Billing ⏳ |
 
 > Ảnh minh chứng đặt tên `docs/evidence/<A|B|C>-hm<n>-*.png`, chèn dưới bảng này khi xuất PDF.
@@ -140,7 +140,7 @@ Nền tảng: **OpenStack** (mức +2 điểm). Nhóm tự cài OpenStack bằng
 
 ## 6. Kết quả đo
 
-**Ứng dụng và co giãn** (B, đo trên cụm 31/10, `docs/evidence/B-cum-31-10.txt`):
+**Ứng dụng và co giãn** (B, đo trên cụm 31/10 và 10/11, `docs/evidence/B-cum-31-10.txt`, `B-cum-10-11.txt`):
 
 | Đại lượng | Giá trị |
 |---|---|
@@ -148,11 +148,11 @@ Nền tảng: **OpenStack** (mức +2 điểm). Nhóm tự cài OpenStack bằng
 | Bài `slow-sum` trên worker `cj.medium` (1 vCPU) | ~1,47 s/test, 8,4 s/bài ≈ **7 bài/phút/worker** |
 | POST `worker_up` alarm_url → server ACTIVE → cài xong, nhận bài được | 18 s → **70 s** |
 | POST `worker_down` alarm_url → còn 1 worker | **14 s** |
-| Loadtest 60 bài: thời gian chờ trung bình / p95 (1 worker cố định) | ⏳ |
+| Loadtest 60 bài `slow-sum`: thời gian chờ trung bình / p95 (1 worker cố định) | 289 s / 553 s (tổng 588 s, 60/60 ACCEPTED, ~6,1 bài/phút) |
 | Loadtest 60 bài: thời gian chờ trung bình / p95 (có tự mở rộng) | ⏳ |
 | Cảnh báo firing → worker mới nhận bài đầu tiên (qua Alertmanager) | ⏳ |
 | Hàng đợi rỗng → thu về 1 worker (gồm `for: 1m`) | ⏳ |
-| Tắt 1 web ở az1 → LB ngừng gửi request tới máy đó | ⏳ |
+| Tắt 1 web ở az1 → LB ngừng gửi request tới máy đó | ~24 s (9/140 request lỗi trong cả lần đo); bật lại → LB gửi lại sau 46 s |
 
 **Dữ liệu và giám sát** (C; local = Docker Desktop trên laptop, MySQL 8.4, CSDL mẫu 200 user / 5 bài / 50 000 bài nộp ≈ 14,6 MB; số gốc `docs/evidence/C-local-timings.txt`, số cụm từ `db/cluster-evidence.sh`):
 
@@ -161,8 +161,8 @@ Nền tảng: **OpenStack** (mức +2 điểm). Nhóm tự cài OpenStack bằng
 | Độ trễ nhân bản (commit ở primary → áp dụng xong ở replica, `performance_schema`, 20 lần) | trung vị 6,4 ms, max 11,2 ms | trung vị 17,2 ms, max 30,9 ms |
 | Backup (`mysqldump --single-transaction` + gzip) / kích thước | 1,0 s / 0,6 MB | 0,95 s / 1,4 KB (gồm upload Swift; CSDL còn trống) |
 | Restore vào primary → replica khớp lại | 3,2 s → +0,9 s | 2,5 s (gồm tải từ Swift) → +0,34 s |
-| Cảnh báo → Gmail nhận thư (gồm `group_wait` 10 s) | 10,5 s | ⏳ |
-| ReplicationBroken: luồng nhân bản dừng → firing (`for: 1m`) | ~72 s | ⏳ |
+| Cảnh báo → Gmail nhận thư (gồm `group_wait` 10 s) | 10,5 s | ≤ 11 s sau firing (0 lỗi gửi) |
+| ReplicationBroken: luồng nhân bản dừng → firing (`for: 1m`) | ~72 s | 66,2 s (pending 6,3 s); bật lại → hết cảnh báo 10,2 s |
 
 ## 7. Chi phí
 

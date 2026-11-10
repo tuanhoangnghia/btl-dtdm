@@ -1,0 +1,126 @@
+# Số đo trên cụm (OpenStack trên GCP, MySQL 8.4 primary az1 + replica az2) 2026-11-10T14:42:12Z
+
+## 0. Máy và phiên bản
+
+cj-mysql-primary: AZ=az1
+cj-mysql-replica: AZ=az2
+PRIMARY: cj-mysql-primary MySQL 8.4.13 server_id=1 read_only=0 super_read_only=0 replica_parallel_workers=4
+REPLICA: cj-mysql-replica MySQL 8.4.13 server_id=2 read_only=1 super_read_only=1 replica_parallel_workers=4
+10.0.3.10 đồng bộ NTP: yes
+10.0.3.11 đồng bộ NTP: yes
+
+## 1. HM 3 – Block storage: volume Cinder gắn vào máy dữ liệu
+volume                   status      GB  gắn vào
+cj-mysql-primary-data    in-use      10  cj-mysql-primary:/dev/vdb
+cj-rabbitmq-data         in-use       5  cj-rabbitmq:/dev/vdb
+cj-mysql-replica-data    in-use      10  cj-mysql-replica:/dev/vdb
+
+## 1b. HM 3 – Object storage: container Swift
+backups      3 object
+releases     6 object
+submissions  81 object
+testcases    2 object
+-- 5 object mới nhất trong submissions:
+3656bbb0-659c-435b-a498-2b880994a841/main.cpp 474 2026-11-10T13:56:09.446190
+8faffe3c-90ec-4eaa-9183-2cf468e1e499/main.cpp 474 2026-11-10T13:56:09.469850
+f7e8bf5a-b655-436d-a1a9-ab459f0a9221/main.cpp 474 2026-11-10T13:56:09.962990
+2d8de485-bbba-4f1c-a6d2-e1452446e6a5/main.cpp 474 2026-11-10T13:56:10.328710
+8dfa477b-e9fe-42ef-9f00-8bd2027eafe5/main.cpp 474 2026-11-10T13:56:10.510560
+
+## 2. HM 4 – Ghi ở Primary, đọc ở Replica, Replica từ chối ghi (db/test-replication.sh)
+== 1. Ghi ở PRIMARY: check-20261110T144241Z-4427
++------------------+-----------+-----------+----+-----------------------------+-------------------------+
+| host             | server_id | read_only | id | note                        | at                      |
++------------------+-----------+-----------+----+-----------------------------+-------------------------+
+| cj-mysql-primary |         1 |         0 | 64 | check-20261110T144241Z-4427 | 2026-11-10 14:42:42.007 |
++------------------+-----------+-----------+----+-----------------------------+-------------------------+
+== 2. Đọc ở REPLICA
++------------------+-----------+-----------------+----+-----------------------------+-------------------------+
+| host             | server_id | super_read_only | id | note                        | at                      |
++------------------+-----------+-----------------+----+-----------------------------+-------------------------+
+| cj-mysql-replica |         2 |               1 | 64 | check-20261110T144241Z-4427 | 2026-11-10 14:42:42.007 |
++------------------+-----------+-----------------+----+-----------------------------+-------------------------+
+replica thấy bản ghi sau ~0 giây
+== 3. Ghi thử ở REPLICA (phải bị từ chối)
+ERROR 1290 (HY000) at line 1: The MySQL server is running with the --super-read-only option so it cannot execute this statement
+== 4. Trạng thái replication
+                  Source_Host: 10.0.3.10
+                  Source_User: repl
+           Replica_IO_Running: Yes
+          Replica_SQL_Running: Yes
+        Seconds_Behind_Source: 0
+           Retrieved_Gtid_Set: 317949ee-dc66-11f1-aca4-fa163ed69a6e:1-377
+            Executed_Gtid_Set: 317949ee-dc66-11f1-aca4-fa163ed69a6e:1-377,
+                Auto_Position: 1
+== 5. Số bản ghi app ở 2 phía
+PRIMARY: users=7 problems=2 submissions=81
+REPLICA: users=7 problems=2 submissions=81
+OK
+
+## 3. Độ trễ nhân bản đo trong MySQL (20 giao dịch 1 dòng vào cj_check.ping)
+   = LAST_APPLIED_TRANSACTION_END_APPLY_TIMESTAMP (replica) - ORIGINAL_COMMIT_TIMESTAMP (primary)
+   2 VM khác đồng hồ (đều đồng bộ NTP, xem mục 0): sai số cỡ vài ms; cột 'chờ' là thời gian WAIT_FOR_EXECUTED_GTID_SET đo trên replica
+  lần  1: trễ 20.8 ms (chờ 0.0 ms)
+  lần  2: trễ 14.3 ms (chờ 0.0 ms)
+  lần  3: trễ 15.5 ms (chờ 0.0 ms)
+  lần  4: trễ 11.9 ms (chờ 0.1 ms)
+  lần  5: trễ 12.2 ms (chờ 0.0 ms)
+  lần  6: trễ 16.0 ms (chờ 0.0 ms)
+  lần  7: trễ 12.2 ms (chờ 0.1 ms)
+  lần  8: trễ 12.7 ms (chờ 0.0 ms)
+  lần  9: trễ 13.8 ms (chờ 0.0 ms)
+  lần 10: trễ 14.5 ms (chờ 0.0 ms)
+  lần 11: trễ 16.0 ms (chờ 0.1 ms)
+  lần 12: trễ 18.4 ms (chờ 0.0 ms)
+  lần 13: trễ 14.4 ms (chờ 0.1 ms)
+  lần 14: trễ 15.4 ms (chờ 0.1 ms)
+  lần 15: trễ 15.2 ms (chờ 0.0 ms)
+  lần 16: trễ 13.2 ms (chờ 0.0 ms)
+  lần 17: trễ 12.0 ms (chờ 0.0 ms)
+  lần 18: trễ 14.5 ms (chờ 0.0 ms)
+  lần 19: trễ 15.7 ms (chờ 0.1 ms)
+  lần 20: trễ 13.3 ms (chờ 0.0 ms)
+   min 11.9 ms · trung vị 14.4 ms · TB 14.6 ms · max 20.8 ms (n=20)
+
+## 4. Kích thước CSDL cloudjudge
++-------------+---------+------+
+| bang        | so_dong | MB   |
++-------------+---------+------+
+| problems    |       2 | 0.05 |
+| submissions |      81 | 0.08 |
+| users       |       7 | 0.05 |
++-------------+---------+------+
+
+## 5. Backup thật lên Swift (db/backup-mysql.sh, đúng như cron 02:00 trên primary, credential cj-backup)
+2026-11-10T14:42:51Z backup OK: swift backups/mysql/20261110-1442.sql.gz (7552 byte, tự xóa sau 7 ngày)
+thời gian backup (đo trên VM primary): 1618 ms, mã thoát 0
+metric cho Prometheus:
+cj_backup_last_success_timestamp_seconds 1794321771
+cj_backup_last_size_bytes 7552
+-- object trong backups/mysql/ (mới nhất cuối):
+mysql/20261110-0412.sql.gz 1452 2026-11-10T04:12:18.838480
+mysql/20261110-0413.sql.gz 1450 2026-11-10T04:13:14.676350
+mysql/20261110-0414.sql.gz 1456 2026-11-10T04:14:38.928750
+mysql/20261110-1442.sql.gz 7552 2026-11-10T14:42:51.773220
+
+## 6. Restore: bỏ qua (chạy lại với RESTORE=1 khi không ai đang nộp bài)
+
+## 7. HM 7 – Cắt luồng nhân bản → ReplicationBroken firing → thư (cần cj-mon)
+thư đã gửi trước khi thử: 0
+14:42:53 STOP REPLICA SQL_THREAD
+14:43:00 pending sau 6280 ms
+14:43:59 firing sau 66156 ms (luật có for: 1m)
+thư đã gửi sau khi firing: 1 (tăng = Alertmanager đã gửi tới Gmail; xem hộp thư để chụp ảnh)
+14:44:10 START REPLICA SQL_THREAD
+14:44:20 hết cảnh báo sau 10212 ms
+
+## 8. Trạng thái cuối
+                  Source_Host: 10.0.3.10
+           Replica_IO_Running: Yes
+          Replica_SQL_Running: Yes
+        Seconds_Behind_Source: 0
+                Last_IO_Error: 
+               Last_SQL_Error: 
+                Auto_Position: 1
+Prometheus thấy backup gần nhất: 2026-11-10T14:42:51Z
+XONG

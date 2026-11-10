@@ -143,11 +143,11 @@ Local: Docker Desktop (WSL2) trên laptop, MySQL 8.4 primary + replica, CSDL m�
 
 | Đo | Local | Cụm (10/11, CSDL còn trống) |
 |---|---|---|
-| Độ trễ nhân bản (commit ở primary → áp dụng xong ở replica, `performance_schema`, 20 lần) | trung vị 6,4 ms, max 11,2 ms | trung vị 17,2 ms, max 30,9 ms (az1 → az2, khác zone GCE) |
+| Độ trễ nhân bản (commit ở primary → áp dụng xong ở replica, `performance_schema`, 20 lần) | trung vị 6,4 ms, max 11,2 ms | trung vị 17,2 ms, max 30,9 ms (az1 → az2, khác zone GCE); lần đo lại tối 10/11: trung vị 14,4 ms, max 20,8 ms |
 | Nạp 50 000 dòng ở primary → replica bắt kịp | 1,3 s + 1,1 s | không đo (không nạp dữ liệu mẫu vào CSDL thật) |
 | Thời gian backup / kích thước bản dump (gzip -9) | 1,0 s / 0,6 MB | 0,95 s / 1,4 KB, gồm upload Swift |
 | Thời gian restore (primary) → replica khớp lại | 3,2 s → +0,9 s | 2,5 s (gồm tải từ Swift) → +0,34 s |
-| Cảnh báo → Gmail nhận thư (gồm `group_wait` 10 s) | 10,5 s | ⏳ chờ cj-mon |
-| ReplicationBroken: luồng nhân bản dừng → firing (`for: 1m`) | ~72 s | ⏳ chờ cj-mon |
+| Cảnh báo → Gmail nhận thư (gồm `group_wait` 10 s) | 10,5 s | ≤ 11 s sau firing (bộ đếm thư email của Alertmanager tăng 0 → 1, 0 lỗi; khi hết cảnh báo gửi thêm thư "resolved") |
+| ReplicationBroken: luồng nhân bản dừng → firing (`for: 1m`) | ~72 s | pending 6,3 s → **firing 66,2 s**; START lại → hết cảnh báo 10,2 s (`C-cluster-alert.txt`, 10/11 tối, CSDL đã có dữ liệu của B) |
 | QueueHigh firing → worker mới nhận bài | (cần app + Heat) | … (B đo phần Heat: alarm_url → worker sẵn sàng 70 s) |
 | QueueIdle → còn 1 worker | (cần app + Heat) | … |
