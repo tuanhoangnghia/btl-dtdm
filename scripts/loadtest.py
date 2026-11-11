@@ -66,6 +66,7 @@ def main() -> int:
     ap.add_argument("--poll", type=float, default=3.0, help="giây giữa 2 lần kiểm tra kết quả")
     ap.add_argument("--timeout", type=float, default=1200, help="giây tối đa chờ chấm xong")
     ap.add_argument("--no-wait", action="store_true", help="chỉ gửi bài, không chờ kết quả")
+    ap.add_argument("--save", help="ghi kết quả từng bài (JSON) ra file")
     args = ap.parse_args()
     if not args.token:
         ap.error("thiếu --token (hoặc biến LOADTEST_TOKEN)")
@@ -126,6 +127,14 @@ def main() -> int:
     print("theo máy chấm          ", dict(collections.Counter(r["worker_host"] for r in results.values())))
     print(summary("chờ trong hàng đợi", wait))
     print(summary("nộp → có kết quả", total))
+    first = {}
+    for r in results.values():
+        if r["started_at"] and (r["worker_host"] not in first or r["started_at"] < first[r["worker_host"]]):
+            first[r["worker_host"]] = r["started_at"]
+    for host, ts in sorted(first.items(), key=lambda kv: kv[1]):
+        print(f"bài đầu tiên của {host}: {ts} (UTC)")
+    if args.save:
+        Path(args.save).write_text(json.dumps(list(results.values()), ensure_ascii=False, indent=1), encoding="utf-8")
     return 0 if len(results) == len(ids) else 1
 
 
