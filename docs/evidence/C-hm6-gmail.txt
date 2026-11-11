@@ -1,0 +1,68 @@
+# HM 6/7 – Thư cảnh báo thật nhận ở Gmail khi B chạy loadtest có tự mở rộng (cụm, 11/11/2026, giờ VN = UTC+7)
+# Gửi bởi Alertmanager trên cj-monitor (10.0.2.11) qua smtp.gmail.com. Nguyên nhân: loadtest 60 bài slow-sum của B,
+# 17:52:36–17:58:21 giờ VN (docs/evidence/B-cum-11-11.txt trên nhánh b/app-phase1).
+# C chỉ chép nguyên văn THÂN thư. Dòng tiêu đề dưới đây theo mẫu Subject trong monitoring/alertmanager.yml.tpl:
+#   '[CloudJudge] {{ .Status | toUpper }}: {{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }})'
+# Giờ gửi lấy từ bộ đếm alertmanager_notifications_total{integration="email"} = 0 → 1 → 2 → 3 → 4, failed = 0 (docs/evidence/C-hm6-prometheus.txt).
+
+========== Thư 1 – gửi ~17:53:35 (QueueHigh firing 17:53:20) ==========
+[CloudJudge] FIRING: QueueHigh (warning)
+
+1 alert for alertname=QueueHigh
+View in Alertmanager
+[1] Firing
+Labels
+alertname = QueueHigh
+action = worker_up
+cluster = cloudjudge
+severity = warning
+Annotations
+description = Queue submissions có hơn 10 bài chờ trong 30 giây, đang thêm worker.
+summary = Hàng đợi chấm dài: 57 bài đang chờ
+
+========== Thư 2 – gửi ~17:54:55 (SubmissionStuck firing 17:54:40) ==========
+[CloudJudge] FIRING: SubmissionStuck (critical)
+
+1 alert for alertname=SubmissionStuck
+View in Alertmanager
+[1] Firing
+Labels
+alertname = SubmissionStuck
+cluster = cloudjudge
+severity = critical
+Annotations
+summary = Có bài chờ chấm quá 2 phút (2m 0s)
+
+========== Thư 3 – gửi ~17:58:05 (QueueHigh hết 17:57:35) ==========
+[CloudJudge] RESOLVED: QueueHigh (warning)
+
+1 alert for alertname=QueueHigh
+View in Alertmanager
+[1] Resolved
+Labels
+alertname = QueueHigh
+action = worker_up
+cluster = cloudjudge
+severity = warning
+Annotations
+description = Queue submissions có hơn 10 bài chờ trong 30 giây, đang thêm worker.
+summary = Hàng đợi chấm dài: 12 bài đang chờ
+
+========== Thư 4 – gửi ~17:58:25 (SubmissionStuck hết 17:58:10) ==========
+[CloudJudge] RESOLVED: SubmissionStuck (critical)
+
+1 alert for alertname=SubmissionStuck
+View in Alertmanager
+[1] Resolved
+Labels
+alertname = SubmissionStuck
+cluster = cloudjudge
+severity = critical
+Annotations
+summary = Có bài chờ chấm quá 2 phút (5m 25s)
+
+========== Nhận xét ==========
+- Thư 1 ghi 57 bài đang chờ, khớp Prometheus (hàng đợi 57 lúc 17:53:15–17:53:20, ngay lúc QueueHigh firing).
+- Thư RESOLVED mang annotation của lần đánh giá cuối khi còn firing (12 bài; bài chờ lâu nhất 5m 25s), không phải số lúc hết cảnh báo.
+- Nhãn action = worker_up: cùng cảnh báo này Alertmanager gọi alarm_url của Heat (route worker-up có continue: true nên vẫn đi xuống route email).
+- QueueIdle (thu về 1 worker) chỉ gọi alarm_url worker_down, không gửi thư (route không có continue), đúng thiết kế.

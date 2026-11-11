@@ -80,7 +80,7 @@ docs/cost/
   - Chụp Grafana tự động bằng Playwright (đăng nhập admin, mật khẩu đọc vào file tạm rồi xóa): `C-hm6-grafana-autoscale.png` (dashboard 17:51–18:04; không lấy tới 18:05 vì dữ liệu dừng 18:04:40 khi B tắt cụm, ô số cuối sẽ ra 0), `C-hm6-grafana-workers.png` (Explore, số worker 1→2→3→2→1).
   - Mốc từ Prometheus (`C-hm6-prometheus.txt`): QueueHigh firing 10:53:20 UTC, SubmissionStuck firing 10:54:40, QueueIdle firing 10:59:30; webhook (alarm_url) 7 lần, email 4 thư, 0 lỗi.
   - Nhả khóa C, tắt cụm bằng `CJ_ME=C gcp-down.sh` (3 VM TERMINATED 00:03).
-  - Còn (tùy chọn): chép 4 thư `[CloudJudge]` khoảng 17:53–17:58 ngày 11/11 từ Gmail vào `C-hm6-gmail.txt`.
+  - 12/11 ~00:30: Trọng chép thân 4 thư `[CloudJudge]` (FIRING/RESOLVED QueueHigh, SubmissionStuck) → `docs/evidence/C-hm6-gmail.txt`; giờ gửi lấy từ bộ đếm email của Alertmanager, tiêu đề theo mẫu `Subject`. Billing: giao diện không cho lọc Projects (chỉ 1 project) và bỏ tick Credits → chụp nguyên trang Reports + Credits, Claude đọc số từ ảnh.
 - 10/11 tối (C, trên cụm, đợt 5, ~21:00–21:55 giờ VN; B cũng giữ khóa để phát hành 0.1.4, C giữ khóa song song, đã báo B):
   - A đã commit `disk_allocation_ratio = 2.0` vào `infra/kolla/config/nova.conf` (`5bb0550` trên `main`), kèm `cj-post-boot.service` tự chạy `lb-recover.sh` sau khi bật cụm.
   - Chép `SMTP_USER`, `SMTP_APP_PASSWORD`, `ALERT_EMAIL_TO` từ `monitoring/local.env` (laptop) sang `/home/cj/secrets/data.env` qua ssh + `sudo tee -a`, không in giá trị; file vẫn `cj:cj 640`.
