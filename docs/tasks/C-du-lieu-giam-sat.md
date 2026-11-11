@@ -63,7 +63,7 @@ docs/cost/
 - [x] Backup/restore local: chạy OK 10/11 trong `db/local-up.sh` (backup → restore vào primary, replication vẫn chạy); bản Swift chạy OK trên cụm 10/11
 - [x] Monitoring local + email thật: 10/11 thư thử tới Gmail OK, alarm_url (webhook) OK, ReplicationBroken firing sau ~72 s rồi tự hết → `docs/evidence/C-local-monitoring.txt`, `C-local-replication-broken.txt`
 - [x] Rules + dashboard: 6 luật kế hoạch + 3 luật dữ liệu, unit test promtool, dashboard 20 panel; `check.sh` TẤT CẢ OK 10/11; tên metric replication đã xác minh (khớp)
-- [ ] Bảng chi phí: `docs/cost/chi-phi.md`, giá GCP đã kiểm bằng Cloud Billing Catalog API 10/11 (3 phương án: 14,9 / 6,7 / 5,9 triệu đ/tháng); còn số thật + ảnh Billing (C tự xem được), giá AWS
+- [x] Bảng chi phí: `docs/cost/chi-phi.md`, giá GCP đã kiểm bằng Cloud Billing Catalog API 10/11 (3 phương án: 14,9 / 6,7 / 5,9 triệu đ/tháng); **số thật Billing 12/11: ₫970.368 ≈ 37 USD** (ảnh `C-hm8-*`). Còn tùy chọn: kiểm lại giá AWS bằng Pricing Calculator
 - [x] `scripts/cj-health.sh`: chạy trên cụm 10/11 tối, tất cả OK (`docs/evidence/C-cluster-health.txt`) sau khi sửa lỗi `-J` ở mục replication
 - [ ] Báo cáo: phần C `docs/report/C-du-lieu-giam-sat.md`; **báo cáo chính `docs/report/bao-cao.md` đã ghép đủ 9 mục** (10/11), số đo cụm đủ (11/11: loadtest có tự mở rộng); còn ảnh Billing, hình kiến trúc PNG, link video; lời thoại demo + vấn đáp `docs/report/C-demo-loi-thoai.md`
 - [x] Stack `cj-data` trên cụm: **UPDATE_COMPLETE 10/11**, Primary (az1) + Replica (az2) + RabbitMQ đủ 3 máy sau khi A đặt `disk_allocation_ratio = 2.0` (Placement DISK_GB 45/90 mỗi compute)
@@ -81,6 +81,7 @@ docs/cost/
   - Mốc từ Prometheus (`C-hm6-prometheus.txt`): QueueHigh firing 10:53:20 UTC, SubmissionStuck firing 10:54:40, QueueIdle firing 10:59:30; webhook (alarm_url) 7 lần, email 4 thư, 0 lỗi.
   - Nhả khóa C, tắt cụm bằng `CJ_ME=C gcp-down.sh` (3 VM TERMINATED 00:03).
   - 12/11 ~00:30: Trọng chép thân 4 thư `[CloudJudge]` (FIRING/RESOLVED QueueHigh, SubmissionStuck) → `docs/evidence/C-hm6-gmail.txt`; giờ gửi lấy từ bộ đếm email của Alertmanager, tiêu đề theo mẫu `Subject`. Billing: giao diện không cho lọc Projects (chỉ 1 project) và bỏ tick Credits → chụp nguyên trang Reports + Credits, Claude đọc số từ ảnh.
+  - 12/11 ~01:00: Trọng chụp `C-hm8-billing-1.png`, `-2.png`, `C-hm8-credits.png`. Reports 23/09→11/11: Compute Engine ₫960.727 + Networking ₫9.641 = **₫970.368 ≈ 37 USD**, phải trả ₫0. Credits: gốc ₫7.825.800 (tài liệu cũ ghi nhầm 7.730.577), còn ₫6.851.833 (88 %). `gcloud billing projects list`: billing account chỉ có project này. Audit log GCE (start/stop `os-controller`): cụm chạy **29,7 giờ** 28/10→11/11 → tính lại ≈ 39 USD, khớp. Dự kiến cũ 132 USD (giả định ~150 giờ) → sửa thành ≈ 60 USD tới 22/11 trong `chi-phi.md`, `bao-cao.md`, báo cáo C, lời thoại demo.
 - 10/11 tối (C, trên cụm, đợt 5, ~21:00–21:55 giờ VN; B cũng giữ khóa để phát hành 0.1.4, C giữ khóa song song, đã báo B):
   - A đã commit `disk_allocation_ratio = 2.0` vào `infra/kolla/config/nova.conf` (`5bb0550` trên `main`), kèm `cj-post-boot.service` tự chạy `lb-recover.sh` sau khi bật cụm.
   - Chép `SMTP_USER`, `SMTP_APP_PASSWORD`, `ALERT_EMAIL_TO` từ `monitoring/local.env` (laptop) sang `/home/cj/secrets/data.env` qua ssh + `sudo tee -a`, không in giá trị; file vẫn `cj:cj 640`.

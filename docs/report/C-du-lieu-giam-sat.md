@@ -2,7 +2,7 @@
 
 > Hạng mục phụ trách: **3** (hai loại lưu trữ), **4** (cơ sở dữ liệu), **7** (giám sát có cảnh báo), **8** (chi phí).
 > Mã: `db/`, `monitoring/`, `heat/cj-data.yaml`, `heat/cj-mon.yaml` + 2 script deploy, `docs/cost/chi-phi.md`.
-> **Còn thiếu (⏳):** số tiền thật trên Billing. Số đo và minh chứng cụm HM 3, 4, 7 đã có (`docs/evidence/C-cluster-*.txt`, `C-hm7-*`); co giãn qua Alertmanager đo 11/11 (`B-cum-11-11.txt`, `C-hm6-*`).
+> **Đủ số liệu và minh chứng (12/11).** Số đo và minh chứng cụm HM 3, 4, 7 đã có (`docs/evidence/C-cluster-*.txt`, `C-hm7-*`); co giãn qua Alertmanager đo 11/11 (`B-cum-11-11.txt`, `C-hm6-*`).
 
 ## 1. Kiến trúc lớp dữ liệu và giám sát
 
@@ -117,7 +117,7 @@ Chi tiết, cách tính và nguồn giá: [`docs/cost/chi-phi.md`](../cost/chi-p
 | OpenStack trên 3 máy chủ cũ của trường | ≈ 6,7 triệu đ |
 | AWS Singapore (EC2 + ALB + NAT + RDS Multi-AZ + SQS + S3 + CloudWatch) | ≈ 5,9 triệu đ |
 
-Chi phí thật của dự án ⏳ (ảnh Billing): dự kiến ≈ 132 USD ≈ 3,4 triệu đ trên tín dụng dùng thử (~150 giờ chạy cụm × 0,66 USD + đĩa, snapshot, IP ≈ 1,23 USD/ngày cả khi tắt). Đơn giá GCP lấy từ Cloud Billing Catalog API (bảng giá chính thức).
+Chi phí thật trên Billing (23/09 → 11/11): **₫970.368 ≈ 37 USD** (Compute Engine ₫960.727, Networking ₫9.641), trả hết bằng tín dụng dùng thử ₫7.825.800 (còn 88 %); cụm chạy 29,7 giờ (0,66 USD/giờ), lúc tắt vẫn tốn ≈ 1,23 USD/ngày cho đĩa, snapshot, IP. Dự kiến tới 22/11 ≈ 60 USD ≈ 1,55 triệu đ. Ảnh: `docs/evidence/C-hm8-*.png`. Đơn giá GCP lấy từ Cloud Billing Catalog API (bảng giá chính thức).
 
 ## 6. Lý giải lựa chọn (bổ sung cho mục 5 của báo cáo)
 

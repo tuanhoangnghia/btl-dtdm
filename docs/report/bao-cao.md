@@ -9,10 +9,10 @@
 | 1 | Bài toán | đề xuất mục 2 | ☑ |
 | 2 | Kiến trúc | đề xuất mục 3 + A §2–3 + B §1 + C §1 | ◐ thiếu hình PNG cập nhật |
 | 3 | Dựng OpenStack trên GCP | A §1, §5, §7 | ☑ |
-| 4 | Đối chiếu 8 hạng mục | A, B, C + `docs/evidence/` | ◐ thiếu ảnh HM 1, 2, 8 |
+| 4 | Đối chiếu 8 hạng mục | A, B, C + `docs/evidence/` | ◐ thiếu minh chứng HM 1, 2 của A |
 | 5 | Lý giải lựa chọn công nghệ | đề xuất mục 5 + KE_HOACH mục 2 + A §1 + B §6 + C §6 | ☑ |
 | 6 | Kết quả đo | B §7 + C §8 | ☑ |
-| 7 | Chi phí | `docs/cost/chi-phi.md` | ◐ thiếu ảnh Billing |
+| 7 | Chi phí | `docs/cost/chi-phi.md` | ☑ |
 | 8 | Giới hạn | A §6 + B §4 + C §7 | ☑ |
 | 9 | Phân công, link | 3 file `docs/tasks/*` | ◐ thiếu link video |
 
@@ -107,7 +107,7 @@ Nền tảng: **OpenStack** (mức +2 điểm). Nhóm tự cài OpenStack bằng
 | 5 | Phân quyền IAM, không nhúng khóa | 4 danh tính Keystone (`cj-web`, `cj-worker`, `cj-backup`, `cj-monitor`), mỗi danh tính 1 application credential giới hạn quyền. Secret truyền qua tham số ẩn của Heat, không có trong Git | `A-acl-test.txt` (worker xóa/ghi object bị 403; monitor đọc dữ liệu bị 403); `git grep` sạch (`A-demo-checks.txt`) |
 | 6 | Cân bằng tải, tự mở rộng | Octavia ACTIVE_STANDBY + health check `/healthz`. Web 2–3 máy theo CPU (2 ASG ghim theo AZ), worker 1–3 máy theo độ dài hàng đợi; Alertmanager gọi `alarm_url` của `OS::Heat::ScalingPolicy` | `B-cum-31-10.txt` (alarm_url → thêm/bớt worker); `B-cum-10-11.txt` (loadtest 60 bài 1 worker, tắt web az1); `B-cum-11-11.txt` (loadtest 60 bài có tự mở rộng: QueueHigh → Alertmanager → Heat, worker 1→2→3→1); `C-hm6-prometheus.txt` (mốc QueueHigh/QueueIdle firing, 7 lần gọi `alarm_url`, 4 thư, 0 lỗi), `C-hm6-grafana-autoscale.png`, `C-hm6-grafana-workers.png` (Grafana: hàng đợi 60 → 0, worker 1→2→3→2→1); `C-hm6-gmail.txt` (4 thư FIRING/RESOLVED của QueueHigh, SubmissionStuck) |
 | 7 | Giám sát, có cảnh báo | Prometheus tìm VM bằng `openstack_sd` + metadata `cj_role`; 9 luật (QueueHigh, QueueIdle, WebCPUHigh, WebCPULow, SubmissionStuck, InstanceDown, MySQLDown, ReplicationBroken, BackupStale) có unit test; email qua Gmail; dashboard Grafana 20 panel | Local: `C-local-monitoring.txt`, `C-local-replication-broken.txt` (thư thật tới Gmail). Cụm: `C-cluster-alert.txt` (15/15 mục tiêu `up`, ReplicationBroken firing → thư), `C-hm7-gmail.txt` (thư FIRING + RESOLVED nhận ở Gmail), `C-hm7-grafana.png` (dashboard) |
-| 8 | Ước tính chi phí | Chi phí thật trên tín dụng GCP + 3 phương án chạy 24/7, giá GCP lấy từ bảng giá chính thức (Cloud Billing Catalog API) | `docs/cost/chi-phi.md`; ảnh Billing ⏳ |
+| 8 | Ước tính chi phí | Chi phí thật trên tín dụng GCP + 3 phương án chạy 24/7, giá GCP lấy từ bảng giá chính thức (Cloud Billing Catalog API) | `docs/cost/chi-phi.md`; `C-hm8-billing-1.png`, `C-hm8-billing-2.png` (Billing → Reports theo dịch vụ), `C-hm8-credits.png` (tín dụng còn 88 %) |
 
 > Ảnh minh chứng đặt tên `docs/evidence/<A|B|C>-hm<n>-*.png`, chèn dưới bảng này khi xuất PDF.
 
@@ -168,14 +168,14 @@ Nền tảng: **OpenStack** (mức +2 điểm). Nhóm tự cài OpenStack bằng
 
 Chi tiết, cách tính và nguồn giá: `docs/cost/chi-phi.md`. Tỷ giá 1 USD ≈ 26.000 đ. Giá GCP lấy từ Cloud Billing Catalog API (bảng giá chính thức, vùng asia-southeast1, tra 10/11/2026).
 
-**Chi phí thật của dự án** (trên tín dụng dùng thử ₫7.730.577 ≈ 297 USD):
+**Chi phí thật của dự án** (trên tín dụng dùng thử ₫7.825.800 ≈ 300 USD):
 
 | Khoản | Ước tính |
 |---|---|
 | Cụm đang chạy (3 VM + 3 IP) | ≈ 0,66 USD/giờ ≈ 17.200 đ/giờ |
 | Cụm đang tắt (đĩa 246 GiB pd-balanced + 30 GiB pd-standard, snapshot ≈ 18 GiB, IP tĩnh) | ≈ 1,23 USD/ngày ≈ 32.000 đ/ngày |
-| Dự kiến 28/10 → 22/11 (~150 giờ chạy) | ≈ 132 USD ≈ 3,4 triệu đ |
-| Số thật trên Billing | ⏳ (ảnh Billing → Reports) |
+| **Thật trên Billing 23/09 → 11/11** (cụm chạy 29,7 giờ) | **₫970.368 ≈ 37 USD** (Compute Engine ₫960.727, Networking ₫9.641), tín dụng trả hết; tín dụng còn ₫6.851.833 (88 %) |
+| Dự kiến tới 22/11 (thêm ~15 giờ chạy để tập demo, quay video) | ≈ 60 USD ≈ 1,55 triệu đ ≈ 20 % tín dụng |
 
 **Ba phương án chạy thật 24/7** (mỗi tháng, gồm nhân lực theo kỹ sư 20 triệu đ/tháng):
 

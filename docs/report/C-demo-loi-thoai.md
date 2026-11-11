@@ -116,11 +116,11 @@ INSERT INTO cj_check.ping (note) VALUES ('ghi vao replica');
 
 **Mở:** `docs/cost/chi-phi.md` mục 3.4, rồi tab Billing.
 
-**Nói:** "Tiền thật của dự án là tiền chạy ba máy ảo Google Cloud: khoảng 17 nghìn đồng mỗi giờ khi bật, và khoảng 34 nghìn đồng mỗi ngày khi tắt, vì đĩa và IP tĩnh vẫn bị tính. Nhóm có script bật tắt và khóa dùng chung để không ai tắt nhầm cụm của người khác. Đây là số thật trên Billing: … (đọc số trên màn hình)."
+**Nói:** "Tiền thật của dự án là tiền chạy ba máy ảo Google Cloud: khoảng 17 nghìn đồng mỗi giờ khi bật, và khoảng 32 nghìn đồng mỗi ngày khi tắt, vì đĩa và IP tĩnh vẫn bị tính. Nhóm có script bật tắt và khóa dùng chung để không ai tắt nhầm cụm của người khác. Đây là số thật trên Billing: tới ngày 11/11 hết khoảng 970 nghìn đồng, tức 37 USD, trong đó máy ảo chiếm gần hết; tín dụng dùng thử 300 USD mới dùng 12 phần trăm."
 
 **Nói:** "Nếu chạy thật 24/7 thì so ba phương án: AWS khoảng 5,9 triệu một tháng, máy chủ cũ của trường khoảng 6,7 triệu, còn OpenStack trên máy ảo Google như demo đắt nhất, khoảng 14,9 triệu. Đắt nhất vì phải trả cho ba máy chạy cả ngày bất kể tải, lại thêm một lớp ảo hóa lồng. Khi tính cả tiền nhân lực vận hành, dịch vụ có quản lý như AWS rẻ nhất. Cách dựng của nhóm phù hợp để học cách một đám mây hoạt động, không phải để tiết kiệm."
 
-**Nếu Billing chưa có số:** dùng mục 2 của `chi-phi.md` (ước tính ≈ 132 USD ≈ 3,4 triệu đ cho cả dự án, trong tín dụng dùng thử ≈ 297 USD).
+**Nếu bị hỏi "sao ít hơn ước tính ban đầu":** "Ước tính đầu giả định cụm chạy khoảng 150 giờ. Thực tế nhật ký bật/tắt máy của Google ghi cụm chỉ chạy khoảng 30 giờ, vì nhóm bật theo buổi và tắt ngay khi xong. Tính lại bằng đơn giá ra khoảng 39 USD, khớp với Billing." (`chi-phi.md` mục 2, ảnh `C-hm8-*.png`)
 
 ---
 

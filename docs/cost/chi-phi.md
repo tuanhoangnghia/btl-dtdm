@@ -37,7 +37,11 @@ Tài nguyên thật trong project (đọc bằng `gcloud compute disks/snapshots
 | Cụm **đang chạy** | 0,3232 + 2 × 0,1616 + 3 × 0,005 (IP) | **≈ 0,66 USD/giờ ≈ 17.200 đ/giờ** |
 | Cụm **đang tắt** (vẫn tính) | đĩa 246 × 0,11 + 30 × 0,044 = 28,4 USD/tháng; snapshot 17,9 × 0,061 = 1,1 USD/tháng; IP static 0,011 × 24 | **≈ 1,23 USD/ngày ≈ 32.000 đ/ngày** (trước 10/11: 1,32) |
 | 2 đĩa VM cũ (đã xóa 10/11) | 60 × 0,044 = 2,64 USD/tháng | ≈ 0,09 USD/ngày ≈ 2.300 đ/ngày, chỉ tính 28/10 → 10/11 |
-| Dự kiến 28/10 → 22/11 (26 ngày), ~150 giờ chạy | 150 × 0,66 + 13 × 1,32 + 13 × 1,23 | **≈ 132 USD ≈ 3,4 triệu đ** |
+| **Thật trên Billing, 23/09 → 11/11** | Compute Engine ₫960.727 + Networking ₫9.641 (ảnh `docs/evidence/C-hm8-billing-1.png`, `-2.png`); cụm chạy **29,7 giờ** (audit log GCE start/stop của `os-controller`) | **₫970.368 ≈ 37 USD**, tín dụng trả hết, phải trả ₫0 |
+| Kiểm lại bằng đơn giá | 29,7 × 0,66 + ~15 ngày × ~1,3 (đĩa, snapshot, IP; gồm 2 đĩa VM cũ) | ≈ 39 USD, khớp Billing |
+| Dự kiến tới 22/11 | thêm 10 ngày tắt × 1,23 + ~15 giờ chạy (tập demo, quay video) × 0,66 ≈ 22 USD | **≈ 60 USD ≈ 1,55 triệu đ ≈ 20 % tín dụng** |
+
+Bản ước tính trước (10/11) là ≈ 132 USD vì giả định cụm chạy ~150 giờ; thực tế chỉ ~30 giờ, do nhóm bật cụm theo buổi và tắt ngay khi xong (script `gcp-down.sh` + khóa dùng chung). Phần lớn chi phí khi tắt là đĩa pd-balanced 246 GiB.
 
 Theo dõi số thật (điền từ Billing → Reports, lọc project `omega-dahlia-468315-f6`):
 
@@ -45,9 +49,10 @@ Theo dõi số thật (điền từ Billing → Reports, lọc project `omega-da
 |---|---|---|---|
 | 29/10 | ~10,5 (nhật ký A) | … | Kolla deploy, smoke test |
 | … | … | … | |
+| 11/11 | 29,7 (audit log GCE) | 970.368 (Reports); Credits 12/11 00:58: đã dùng 973.967 | `C-hm8-billing-1.png`, `C-hm8-billing-2.png`, `C-hm8-credits.png` |
 | Ngày nộp | … | … | ảnh chụp Billing để vào báo cáo |
 
-Tín dụng ban đầu ₫7.730.577 (≈ 297 USD), hết hạn ~23/12/2026. Quy tắc: tổng giờ chạy ≤ 300, tắt bằng `infra/gcp/gcp-down.sh` (KE_HOACH mục 1).
+Tín dụng Free Trial ban đầu **₫7.825.800** (≈ 300 USD), ngày 12/11 còn **₫6.851.833 (88 %)**, hết hạn ~23/12/2026 (`C-hm8-credits.png`). Billing account `01BE00-008CAB-253DE8` chỉ gắn 1 project (`gcloud billing projects list`), nên Reports không cần lọc project. Quy tắc: tổng giờ chạy ≤ 300, tắt bằng `infra/gcp/gcp-down.sh` (KE_HOACH mục 1).
 
 ## 3. Ba phương án chạy thật 24/7 (mỗi tháng, ~730 giờ)
 
