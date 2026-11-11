@@ -65,15 +65,17 @@ image/
 - [x] Release trên Swift: dùng **0.1.3** (0.1.0/0.1.1 đóng gói sai quyền, 0.1.2 chưa có bản sửa deadlock sandbox)
 - [x] Stack `cj-app` CREATE/UPDATE_COMPLETE: `lb_fip` 172.24.4.64, web az1 + az2, 1 worker. A đã DNAT :80 (public trả 503 của Octavia vì chưa có member khỏe)
 - [x] Nộp bài qua IP public ra điểm (10/11): seed xong, 7 lời giải mẫu đúng kết quả, `/scoreboard` đọc replica
-- [ ] Scale worker 1→3→1, số liệu đo: 1→2→1 qua API Heat (77 s / 15 s) và **qua alarm_url (HTTP 200, 70 s / 14 s)** đã đo; theo hàng đợi chờ `cj-mon` (C còn thiếu biến SMTP)
+- [ ] Scale worker 1→3→1, số liệu đo: 1→2→1 qua API Heat (77 s / 15 s) và **qua alarm_url (HTTP 200, 70 s / 14 s)** đã đo; theo hàng đợi qua Alertmanager đã đo 11/11
 - [x] Loadtest 60 bài, 1 worker cố định (10/11): 60/60 ACCEPTED, chờ tb 289 s, p95 553 s
 - [x] `slow-sum` đo trên worker thật (`cj.medium`, 1 vCPU): ~1,47 s/test, ~8,4 s/bài → giữ n = 3·10^8
 - [x] Failover web (10/11): tắt web az1, gián đoạn ~24 s (khoảng một nửa request lỗi), sau đó az2 phục vụ 100%; bật lại nhận request sau 46 s
-- [x] Release **0.1.5** đang chạy trên cụm (sửa `az: local`, worker heartbeat 30 s). A đã sửa `cj-lb`, rolling update chạy được
+- [x] Release **0.1.7** đang chạy trên cụm (sửa `az: local`, worker heartbeat 30 s, `/metrics` chặn qua LB). **Không dùng 0.1.6** (đóng gói nhầm code 0.1.5)
+- [x] Loadtest 60 bài có autoscale (11/11): chờ tb 194 s / p95 319 s, firing → worker mới nhận bài ~65 s, hàng đợi rỗng → 1 worker 190 s
 - [x] Scale qua alarm_url (10/11): worker 1→3→1, web 2→3→2
 - [ ] Báo cáo phần B (đã có nháp `docs/report/B-ung-dung.md`, còn thiếu số liệu đo)
 
 ## Nhật ký
+- 11/11 (B, theo yêu cầu C): bật cụm, chờ `cj-post-boot` (~9 phút), phát hành 0.1.7, loadtest có autoscale 10:52:36–10:58:21 UTC, về 1 worker 11:01:47, tắt cụm. Không động vào stack `cj-mon`. Release 0.1.6 hỏng vì `git bundle` thiếu commit gốc mà lệnh `git pull` trên controller lỗi không dừng script; lần sau chạy với `set -e` và kiểm tra commit trước khi `release.sh`. Số liệu: `docs/evidence/B-cum-11-11.txt`.
 - 10/11 tối (B): `/metrics` mở công khai qua LB. Chặn trong app theo IP nguồn: request đi qua amphora (net-public 10.0.1.0/24) nhận 403, Prometheus gọi thẳng từ net-app vẫn đọc được. Không dùng L7 policy của Octavia vì HAProxy so khớp đường dẫn thô, `/%6detrics` lọt qua. Code đã push, **chưa phát hành** (C đang giữ khóa); phát hành 0.1.6 rồi kiểm `curl http://<CTL_IP>/metrics` phải ra 403.
 - 10/11 tối (B): A đã sửa `cj-lb` (`cj-post-boot.service`). Phát hành 0.1.4 rồi 0.1.5 (`docs/evidence/B-cum-10-11.txt` mục 6–9).
   - **Consumer ma khi scale in**: Heat xóa VM không đóng TCP và không có SIGTERM, trong khi heartbeat 300 s nên RabbitMQ vẫn giao bài cho máy đã chết, bài kẹt nhiều phút (`consumers=3` khi chỉ còn 1 worker). Sửa: chấm bài ở luồng riêng, ack bằng `add_callback_threadsafe`, heartbeat 30 s. Đo lại: bài rơi vào máy đã chết được giao lại sau ~92 s, 6/6 ACCEPTED.

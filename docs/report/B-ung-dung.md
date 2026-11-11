@@ -2,7 +2,7 @@
 
 > Hạng mục phụ trách: **6** (cân bằng tải, tự mở rộng, chịu lỗi tầng ứng dụng); phần ứng dụng dùng cho HM 3, 4, 5, 7.
 > Mã: `app/`, `image/`, `heat/cj-app.yaml` + 2 template con, `scripts/release.sh`, `scripts/loadtest.py`.
-> **Còn thiếu:** số liệu đo phụ thuộc `cj-mon` (mục 7) và ảnh chụp. Số liệu đã đo: `docs/evidence/B-cum-31-10.txt`, `docs/evidence/B-cum-10-11.txt`.
+> **Còn thiếu:** ảnh chụp. Số liệu đã đo: `docs/evidence/B-cum-31-10.txt`, `B-cum-10-11.txt`, `B-cum-11-11.txt`.
 
 ## 1. Kiến trúc ứng dụng
 
@@ -85,15 +85,15 @@ Mỗi lần biên dịch và mỗi test chạy trong một container `docker run
 | Thời gian chấm 1 bài `a-plus-b` trên worker (gồm biên dịch, chưa gồm hàng đợi) | C++ 6,9 s / Python 3,2 s |
 | Thời gian 1 test `slow-sum` / 1 bài (worker `cj.medium`, 1 vCPU) | ~1,47 s / 8,4 s (≈ 7 bài/phút/worker) |
 | Loadtest 60 bài `slow-sum`: chờ trung bình / p95 (1 worker cố định, đo 10/11) | 289 s / 553 s (tổng 588 s, 60/60 ACCEPTED, ~6,1 bài/phút) |
-| Loadtest 60 bài: chờ trung bình / p95 (có autoscale) | _ / _ |
+| Loadtest 60 bài `slow-sum`: chờ trung bình / p95 (có autoscale, đo 11/11) | **194 s / 319 s** (tổng 345 s, 60/60 ACCEPTED, 3 worker chấm 30/23/7 bài) |
 | Tín hiệu worker_up → server ACTIVE → cài xong, `:9200` OK (đo 31/10, qua API Heat) | 22 s → **77 s** |
 | POST `worker_up` alarm_url → server ACTIVE → cài xong (đo 31/10) | 18 s → **70 s** |
 | POST `worker_down` alarm_url → còn 1 worker (đo 31/10) | **14 s** |
-| Alert firing → worker mới nhận bài đầu tiên (qua Alertmanager) | _ s (chờ `cj-mon`) |
+| `QueueHigh` firing → worker mới nhận bài đầu tiên (qua Alertmanager, đo 11/11) | **~65 s** (worker thứ 3: ~86 s sau tín hiệu thứ 2, gửi lại sau 1 phút) |
 | Tín hiệu worker_down → còn 1 worker (đo 31/10) | **15 s** |
 | Scale qua alarm_url (đo 10/11): worker 1→2→3 và 3→2→1 | Thành công; mỗi lần Heat tạo server sau ~7 s, xóa sau ~12 s |
 | Bài rơi vào worker vừa bị xóa → được giao lại (heartbeat 30 s, đo 10/11) | ~92 s (bản đầu, heartbeat 300 s: tới ~10 phút) |
-| Hàng đợi rỗng → thu về 1 worker (qua Alertmanager, gồm `for: 1m`) | _ s |
+| Hàng đợi rỗng → thu về 1 worker (qua Alertmanager, gồm `for: 1m`, đo 11/11) | **190 s** (3 → 2 sau 70 s, → 1 sau thêm 2 phút do cooldown và gửi lại) |
 | Tắt 1 web ở az1 → LB ngừng gửi request tới máy đó (đo 10/11, curl mỗi ~0,8 s, timeout 2 s) | ~24 s; trong đó khoảng một nửa request lỗi (9/140 cả lần đo) |
 | Bật lại web az1 → LB gửi request trở lại | 46 s |
 

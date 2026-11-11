@@ -1,0 +1,40 @@
+Minh chứng phần B trên cụm, 11/11/2026. Giờ UTC (giờ VN = UTC+7). Có cj-mon của C (Alertmanager gọi alarm_url thật).
+
+=== 1. Bật cụm và phát hành ===
+10:35 gcp-up.sh; cj-post-boot.service (A) xong 10:43:44 giờ VN 17:43:44, cj-lb ACTIVE/ONLINE, /healthz public 200 sau ~530 s
+Release 0.1.6: LỖI ĐÓNG GÓI, bundle git thiếu commit gốc nên controller không cập nhật code -> 0.1.6 = code của 0.1.5. Không dùng.
+Release 0.1.7 (commit 1bc4531), deploy xong 10:51:35:
+  curl http://34.124.240.64/metrics -> 403 (chặn truy cập qua LB)
+  Prometheus (cj-monitor) vẫn scrape: up{job="web"} = 1 cho cj-web-7774f285, cj-web-c2efe36e; up{job="worker"} = 1
+  Trước loadtest: hàng đợi 0, 1 consumer, không có cảnh báo.
+
+=== 2. Loadtest 60 bài slow-sum, có tự mở rộng (Prometheus -> Alertmanager -> alarm_url -> Heat) ===
+BẮT ĐẦU 2026-11-11 10:52:36 UTC (17:52:36 giờ VN)
+XONG LOADTEST 2026-11-11 10:58:21 UTC (17:58:21 giờ VN)
+VỀ 1 WORKER 2026-11-11 11:01:47 UTC (18:01:47 giờ VN, theo openstack server list; Prometheus thấy 11:01:40)
+gửi 60/60 bài trong 5.0s, 10 luồng
+tổng thời gian chạy     345s, xong 60/60 bài
+theo kết quả            {'ACCEPTED': 60}
+theo máy chấm           {'cj-worker-8e743e60': 30, 'cj-worker-63ae89c4': 23, 'cj-worker-190f79dc': 7}
+chờ trong hàng đợi     tb  194.0s  p50  202.6s  p95  319.4s  max  327.3s
+nộp -> có kết quả      tb  204.9s  p50  213.2s  p95  328.7s  max  340.4s
+bài đầu tiên của cj-worker-8e743e60: 10:52:38.1
+bài đầu tiên của cj-worker-63ae89c4: 10:54:24.8
+bài đầu tiên của cj-worker-190f79dc: 10:56:46.8
+(so với 1 worker cố định ngày 10/11: tổng 588 s, chờ tb 289 s, p95 553 s)
+
+=== 3. Dòng thời gian (Prometheus query_range bước 5 s; heat-engine.log; openstack stack event list) ===
+10:52:50  hàng đợi đạt 60 bài; QueueHigh pending
+10:53:20  QueueHigh firing; heat-engine 10:53:20 "worker_up alarm, adjusting group worker_asg"
+10:53:37  Heat worker_up SIGNAL_COMPLETE
+10:54:24.8 cj-worker-63ae89c4 nhận bài đầu tiên  => firing -> worker mới nhận bài: ~65 s
+10:54:30  Prometheus thấy 2 worker up
+10:55:20  Alertmanager gửi lại (repeat 1m), heat-engine adjusting -> 10:55:38 SIGNAL_COMPLETE
+10:56:46.8 cj-worker-190f79dc nhận bài đầu tiên (~86 s sau tín hiệu thứ 2)
+10:56:50  Prometheus thấy 3 worker up
+10:57:20  tín hiệu worker_up thứ 3: đã đạt max 3, không thêm máy
+10:57:35  QueueHigh hết
+10:58:30  hàng đợi rỗng; QueueIdle pending
+10:59:30  QueueIdle firing (for: 1m) -> 10:59:40 worker_down SIGNAL_COMPLETE, còn 2 worker
+11:01:39  worker_down SIGNAL_COMPLETE (sau cooldown), 11:01:40 còn 1 worker
+=> hàng đợi rỗng -> còn 1 worker: 190 s (10:58:30 -> 11:01:40), gồm for: 1m và 1 lần cooldown
