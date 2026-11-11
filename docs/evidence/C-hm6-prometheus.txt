@@ -1,0 +1,27 @@
+# HM 6/7 – Co giãn worker qua Prometheus → Alertmanager → alarm_url của Heat, nhìn từ phía giám sát (cụm, 11/11/2026)
+# Loadtest do B chạy: 60 bài slow-sum, 10:52:36–10:58:21 UTC (17:52:36–17:58:21 giờ VN). Số liệu phía B: docs/evidence/B-cum-11-11.txt (nhánh b/app-phase1).
+# C lấy lại 11/11 23:55 giờ VN (bật cụm chỉ để đọc, không update stack cj-mon): Prometheus query_range bước 5 s, qua datasource proxy của Grafana.
+# Giờ dưới đây là UTC (giờ VN = UTC+7). Dữ liệu dừng 11:04:40 UTC (B tắt cụm).
+
+=== Hàng đợi (sum(rabbitmq_queue_messages_ready{queue="submissions"})) ===
+10:51:00=0  10:52:50=59 (đỉnh)  10:54:25=50  10:55:15=40  10:56:15=29  10:57:00=19  10:57:40=9  10:58:20=0
+
+=== Số worker (count(up{job="worker"} == 1)) ===
+10:51:05=1  10:54:30=2  10:56:50=3  10:59:40=2  11:01:40=1
+
+=== Cảnh báo (ALERTS) ===
+QueueHigh        pending 10:52:50 → firing 10:53:20 → hết 10:57:35   (ready > 10 trong 30 s; action=worker_up)
+SubmissionStuck  firing 10:54:40 → hết 10:58:10                       (bài chờ lâu nhất > 120 s; chỉ gửi thư)
+QueueIdle        pending 10:58:30 → firing 10:59:30 → hết 11:01:40   (hàng đợi rỗng 1 phút; action=worker_down, không gửi thư)
+
+=== Alertmanager (alertmanager_notifications_total, bộ đếm từ lúc cụm bật) ===
+email    0 → 1 (10:53:35) → 2 (10:54:55) → 3 (10:58:05) → 4 (10:58:25)   = FIRING QueueHigh, FIRING SubmissionStuck, rồi 2 thư RESOLVED
+webhook  0 → 1 (10:53:25) → 2 (10:55:25) → 3 (10:57:25) → 4 (10:58:25) → 5 (10:59:35) → 6 (11:01:35) → 7 (11:02:35)
+         = gọi alarm_url: worker_up mỗi 1 phút khi QueueHigh còn firing (lần thứ 3 Heat bỏ qua vì đã max 3), worker_down khi QueueIdle firing
+notifications_failed_total = 0
+
+=== Suy ra ===
+QueueHigh firing → Heat thêm máy (B: SIGNAL_COMPLETE 10:53:37) → Prometheus thấy worker thứ 2 10:54:30 (70 s); worker mới nhận bài đầu tiên 10:54:24.8 (~65 s, theo B).
+Hàng đợi rỗng 10:58:20 → còn 1 worker 11:01:40 (~200 s theo Prometheus; B đo 190 s từ 10:58:30) = for: 1m + 2 lần worker_down cách nhau ~2 phút (cooldown).
+
+Ảnh: C-hm6-grafana-autoscale.png (dashboard CloudJudge, 17:51–18:04 giờ VN), C-hm6-grafana-workers.png (số worker 1→2→3→2→1, Grafana Explore).

@@ -65,14 +65,22 @@ docs/cost/
 - [x] Rules + dashboard: 6 luật kế hoạch + 3 luật dữ liệu, unit test promtool, dashboard 20 panel; `check.sh` TẤT CẢ OK 10/11; tên metric replication đã xác minh (khớp)
 - [ ] Bảng chi phí: `docs/cost/chi-phi.md`, giá GCP đã kiểm bằng Cloud Billing Catalog API 10/11 (3 phương án: 14,9 / 6,7 / 5,9 triệu đ/tháng); còn số thật + ảnh Billing (C tự xem được), giá AWS
 - [x] `scripts/cj-health.sh`: chạy trên cụm 10/11 tối, tất cả OK (`docs/evidence/C-cluster-health.txt`) sau khi sửa lỗi `-J` ở mục replication
-- [ ] Báo cáo: phần C `docs/report/C-du-lieu-giam-sat.md`; **báo cáo chính `docs/report/bao-cao.md` đã ghép đủ 9 mục** (10/11), còn số đo cụm, ảnh, hình kiến trúc PNG, link video; lời thoại demo + vấn đáp `docs/report/C-demo-loi-thoai.md`
+- [ ] Báo cáo: phần C `docs/report/C-du-lieu-giam-sat.md`; **báo cáo chính `docs/report/bao-cao.md` đã ghép đủ 9 mục** (10/11), số đo cụm đủ (11/11: loadtest có tự mở rộng); còn ảnh Billing, hình kiến trúc PNG, link video; lời thoại demo + vấn đáp `docs/report/C-demo-loi-thoai.md`
 - [x] Stack `cj-data` trên cụm: **UPDATE_COMPLETE 10/11**, Primary (az1) + Replica (az2) + RabbitMQ đủ 3 máy sau khi A đặt `disk_allocation_ratio = 2.0` (Placement DISK_GB 45/90 mỗi compute)
 - [x] Backup lên Swift: `backup-mysql.sh` chạy thật 10/11 (0,95 s, object `backups/mysql/…sql.gz`, tự xóa sau 7 ngày); cron 02:00 đã cài sẵn trên primary
 - [x] Stack `cj-mon` với alarm_url thật: **CREATE_COMPLETE 10/11 tối** (~14 s Heat + cloud-init), 15/15 mục tiêu `up`, email 0 lỗi; alarm_url lấy từ `app-alarms.env` của B
+- [x] Co giãn qua Alertmanager (HM 6/7) trên cụm 11/11: B chạy loadtest; C lấy mốc từ Prometheus `docs/evidence/C-hm6-prometheus.txt` + ảnh `C-hm6-grafana-autoscale.png`, `C-hm6-grafana-workers.png`
 - [x] Minh chứng HM 3, 4 trên cụm: `docs/evidence/C-cluster-evidence.txt` (10/11, có RESTORE=1). HM 7: `docs/evidence/C-cluster-alert.txt` (ALERT=1), `C-hm7-gmail.txt` (2 thư), `C-hm7-grafana.png`
 - [ ] Báo cáo ghép + PDF
 
 ## Nhật ký
+- 11/11 tối → 12/11 (C, trên cụm, đợt 6, 23:43–00:03 giờ VN, C giữ khóa; không ai khác dùng):
+  - B (Phường) đã chạy loadtest 60 bài có autoscale qua Alertmanager 17:52:36–17:58:21 giờ VN, về 1 worker 18:01:47, rồi tắt cụm (`docs/evidence/B-cum-11-11.txt` trên `origin/b/app-phase1`, `86e91f0`). Không đụng `cj-mon`. Kết quả: chờ tb/p95 194/319 s (1 worker: 289/553 s), firing → worker mới nhận bài ~65 s, hàng đợi rỗng → 1 worker 190 s → đã điền 3 ô ⏳ `bao-cao.md` mục 6 + ô HM 6 mục 4, báo cáo C mục 4.4.
+  - C bật cụm (`gcp-up.sh`), cj-monitor ACTIVE sau ~10 phút; dữ liệu Prometheus của lúc loadtest còn nguyên. Đường hầm Grafana qua bastion phải dùng `ProxyCommand` + `StrictHostKeyChecking=no` (laptop không lưu host key bastion; `-J` bị "Host key verification failed"), cùng cách `cj-health.sh`.
+  - Chụp Grafana tự động bằng Playwright (đăng nhập admin, mật khẩu đọc vào file tạm rồi xóa): `C-hm6-grafana-autoscale.png` (dashboard 17:51–18:04; không lấy tới 18:05 vì dữ liệu dừng 18:04:40 khi B tắt cụm, ô số cuối sẽ ra 0), `C-hm6-grafana-workers.png` (Explore, số worker 1→2→3→2→1).
+  - Mốc từ Prometheus (`C-hm6-prometheus.txt`): QueueHigh firing 10:53:20 UTC, SubmissionStuck firing 10:54:40, QueueIdle firing 10:59:30; webhook (alarm_url) 7 lần, email 4 thư, 0 lỗi.
+  - Nhả khóa C, tắt cụm bằng `CJ_ME=C gcp-down.sh` (3 VM TERMINATED 00:03).
+  - Còn (tùy chọn): chép 4 thư `[CloudJudge]` khoảng 17:53–17:58 ngày 11/11 từ Gmail vào `C-hm6-gmail.txt`.
 - 10/11 tối (C, trên cụm, đợt 5, ~21:00–21:55 giờ VN; B cũng giữ khóa để phát hành 0.1.4, C giữ khóa song song, đã báo B):
   - A đã commit `disk_allocation_ratio = 2.0` vào `infra/kolla/config/nova.conf` (`5bb0550` trên `main`), kèm `cj-post-boot.service` tự chạy `lb-recover.sh` sau khi bật cụm.
   - Chép `SMTP_USER`, `SMTP_APP_PASSWORD`, `ALERT_EMAIL_TO` từ `monitoring/local.env` (laptop) sang `/home/cj/secrets/data.env` qua ssh + `sudo tee -a`, không in giá trị; file vẫn `cj:cj 640`.

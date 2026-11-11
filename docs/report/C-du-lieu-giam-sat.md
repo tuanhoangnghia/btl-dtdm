@@ -2,7 +2,7 @@
 
 > Hạng mục phụ trách: **3** (hai loại lưu trữ), **4** (cơ sở dữ liệu), **7** (giám sát có cảnh báo), **8** (chi phí).
 > Mã: `db/`, `monitoring/`, `heat/cj-data.yaml`, `heat/cj-mon.yaml` + 2 script deploy, `docs/cost/chi-phi.md`.
-> **Còn thiếu (⏳):** ảnh Grafana/thư khi B chạy loadtest có tự mở rộng (QueueHigh → worker 1→2→3→1), số tiền thật trên Billing. Số đo và minh chứng cụm HM 3, 4, 7 đã có (`docs/evidence/C-cluster-*.txt`, `C-hm7-*`).
+> **Còn thiếu (⏳):** số tiền thật trên Billing. Số đo và minh chứng cụm HM 3, 4, 7 đã có (`docs/evidence/C-cluster-*.txt`, `C-hm7-*`); co giãn qua Alertmanager đo 11/11 (`B-cum-11-11.txt`, `C-hm6-*`).
 
 ## 1. Kiến trúc lớp dữ liệu và giám sát
 
@@ -106,7 +106,7 @@ Alertmanager định tuyến theo nhãn `action`: `worker_up` → `POST` vào `a
 - Đã chạy thật ở local (`docs/evidence/C-local-monitoring.txt`): thư thử và thư `ReplicationBroken` tới Gmail; `ACTION=worker_up` gọi đúng URL. Khi thử cắt luồng nhân bản (`STOP REPLICA SQL_THREAD`): pending sau ~10 s, firing sau ~72 s (`for: 1m`), tự hết ~11 s sau khi nối lại (`docs/evidence/C-local-replication-broken.txt`).
 - Gặp khi chạy local: phần mềm diệt virus quét thư (Avast Mail Shield) ký lại TLS của `smtp.gmail.com` → Alertmanager báo `x509: certificate signed by unknown authority`. Cách xử lý là cho container tin thêm CA đó (`monitoring/docker-compose.local-ca.yml`), **không tắt kiểm tra TLS**. Trên cụm không có lớp chặn này.
 - Đã chạy thật trên cụm (10/11): stack `cj-mon`, Prometheus thấy 15/15 mục tiêu; cắt luồng nhân bản → pending 6,3 s, firing 66,2 s, thư FIRING rồi RESOLVED tới Gmail lúc 21:44 (`docs/evidence/C-cluster-alert.txt`, `C-hm7-gmail.txt`); dashboard Grafana `C-hm7-grafana.png`.
-- Minh chứng cụm còn ⏳ (cần B chạy loadtest có tự mở rộng): ảnh Grafana lúc chạy loadtest 60 bài; ảnh hộp thư có `QueueHigh` / `SubmissionStuck`; `openstack stack resource list -n 2 cj-app` thấy worker 1 → 2 → 3 → 1.
+- Co giãn qua Alertmanager trên cụm (11/11, B chạy loadtest 60 bài `slow-sum` 17:52–17:58 giờ VN, `docs/evidence/B-cum-11-11.txt`): hàng đợi lên 60 bài → `QueueHigh` firing sau 30 s → Alertmanager gọi `alarm_url` → Heat thêm worker; worker mới nhận bài đầu tiên **~65 s** sau firing; còn firing nên Alertmanager gửi lại mỗi phút → worker thứ 3 (tối đa). Chờ trung bình / p95 **194 s / 319 s** (1 worker cố định: 289 s / 553 s). Hàng đợi rỗng → `QueueIdle` → còn 1 worker sau **190 s** (gồm `for: 1m` và cooldown). Phía giám sát (`C-hm6-prometheus.txt`): Alertmanager gọi `alarm_url` 7 lần (worker_up mỗi phút khi QueueHigh còn firing, worker_down khi QueueIdle firing), gửi 4 thư (FIRING + RESOLVED của `QueueHigh` và `SubmissionStuck`), 0 lỗi. `QueueIdle` chỉ gọi `alarm_url`, không gửi thư (không có `continue`). Ảnh Grafana: `C-hm6-grafana-autoscale.png` (dashboard), `C-hm6-grafana-workers.png` (số worker 1→2→3→2→1).
 
 ## 5. Hạng mục 8 – Chi phí
 Chi tiết, cách tính và nguồn giá: [`docs/cost/chi-phi.md`](../cost/chi-phi.md).
