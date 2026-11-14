@@ -1,0 +1,23 @@
+[Unit]
+Description=CloudJudge worker (consume queue submissions, metrics :9200)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+User=cjsvc
+Group=cjsvc
+# quyền gọi `docker run` để tạo sandbox
+SupplementaryGroups=docker
+EnvironmentFile=/etc/cloudjudge/cloudjudge.env
+Environment=PYTHONPATH=/opt/cj/app
+WorkingDirectory=/opt/cj/app
+ExecStart=/opt/cj/venv/bin/python -m cloudjudge.worker.main
+# SIGTERM: worker đóng kết nối, bài đang chấm dở (chưa ack) quay lại hàng đợi cho worker khác
+KillSignal=SIGTERM
+TimeoutStopSec=20
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

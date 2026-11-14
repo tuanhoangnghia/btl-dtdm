@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Tạo bài · CloudJudge{% endblock %}
+{% block content %}
+<h1>Tạo bài mới</h1>
+<form method="post" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label for="slug">Slug (vd: a-plus-b)</label><input id="slug" type="text" name="slug" value="{{ form.get('slug', '') }}" required>
+  <label for="title">Tiêu đề</label><input id="title" type="text" name="title" value="{{ form.get('title', '') }}" size="60" required>
+  <label for="tl">Giới hạn thời gian (ms)</label><input id="tl" type="number" name="time_limit_ms" value="{{ form.get('time_limit_ms', 2000) }}">
+  <label for="mem">Giới hạn bộ nhớ (MB)</label><input id="mem" type="number" name="memory_mb" value="{{ form.get('memory_mb', 256) }}">
+  <label for="st">Đề bài (markdown)</label><textarea id="st" name="statement_md" rows="12">{{ form.get('statement_md', '') }}</textarea>
+  <label for="z">tests.zip (gồm 1.in, 1.out, 2.in, 2.out, ...)</label><input id="z" type="file" name="tests_zip" accept=".zip" required>
+  <p><button class="btn">Tạo bài</button></p>
+</form>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ problem.title }} · CloudJudge{% endblock %}
+{% block content %}
+<h1>{{ problem.title }}</h1>
+<p class="muted">Giới hạn: {{ problem.time_limit_ms }} ms · {{ problem.memory_mb }} MB · {{ problem.test_count }} test</p>
+{{ statement }}
+
+<h2>Nộp bài</h2>
+{% if me %}
+<form method="post" action="{{ url_for('web.problem_submit', slug=problem.slug) }}" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label for="lang">Ngôn ngữ</label>
+  <select id="lang" name="language"><option value="cpp">C++17 (g++ -O2)</option><option value="python">Python 3.12</option></select>
+  <label for="src">Mã nguồn</label>
+  <textarea id="src" name="source" rows="16" spellcheck="false"></textarea>
+  <label for="f">hoặc chọn file</label><input id="f" type="file" name="source_file" accept=".cpp,.cc,.py">
+  <p><button class="btn">Nộp bài</button></p>
+</form>
+{% if mine %}
+<h3>Lần nộp gần đây của bạn</h3>
+<table>
+  <tr><th>#</th><th>Ngôn ngữ</th><th>Kết quả</th><th>Điểm</th><th>Lúc nộp (UTC)</th></tr>
+  {% for s in mine %}
+  <tr><td><a href="{{ url_for('web.submission_view', sub_id=s.id) }}">{{ s.id }}</a></td><td>{{ s.language }}</td>
+      <td class="st st-{{ s.status }}">{{ s.status }}</td><td>{{ s.score if s.score is not none else '' }}</td>
+      <td>{{ s.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% else %}
+<p><a href="{{ url_for('web.login', next=request.path) }}">Đăng nhập</a> để nộp bài.</p>
+{% endif %}
+{% endblock %}

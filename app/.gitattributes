@@ -1,0 +1,3 @@
+# Script, unit systemd và file test chạy trên Linux: luôn giữ LF kể cả khi checkout trên Windows
+* text=auto eol=lf
+*.zip binary

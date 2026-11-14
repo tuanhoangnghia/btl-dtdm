@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{% if refresh %}<meta http-equiv="refresh" content="2">{% endif %}
+<title>{% block title %}CloudJudge{% endblock %}</title>
+<style>
+  :root { --fg:#1f2328; --muted:#656d76; --line:#d0d7de; --bg:#f6f8fa; --accent:#0969da; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color:var(--fg); }
+  header { background:#24292f; color:#fff; padding:.6rem 1.2rem; display:flex; gap:1.2rem; align-items:center; }
+  header a { color:#fff; text-decoration:none; } header .brand { font-weight:700; }
+  header .right { margin-left:auto; display:flex; gap:.8rem; align-items:center; }
+  header form { margin:0; } header button { background:none; border:1px solid #fff6; color:#fff; border-radius:4px; cursor:pointer; }
+  main { max-width:960px; margin:1.5rem auto; padding:0 1.2rem; }
+  footer { max-width:960px; margin:2rem auto; padding:.8rem 1.2rem; color:var(--muted); font-size:13px; border-top:1px solid var(--line); }
+  table { border-collapse:collapse; width:100%; } th, td { text-align:left; padding:.4rem .6rem; border-bottom:1px solid var(--line); }
+  th { background:var(--bg); } a { color:var(--accent); }
+  pre { background:var(--bg); padding:.8rem; overflow:auto; border-radius:6px; border:1px solid var(--line); }
+  textarea { width:100%; font-family:ui-monospace, Consolas, monospace; font-size:13px; }
+  input[type=text], input[type=password], input[type=number], select { padding:.35rem .5rem; }
+  .btn { background:#1f883d; color:#fff; border:0; padding:.45rem 1rem; border-radius:6px; cursor:pointer; font-size:14px; }
+  .flash { padding:.6rem .8rem; border-radius:6px; margin-bottom:1rem; }
+  .flash.error { background:#ffebe9; border:1px solid #ff818266; } .flash.ok { background:#dafbe1; border:1px solid #4ac26b66; }
+  .st { font-weight:600; } .st-ACCEPTED { color:#1a7f37; } .st-PENDING, .st-RUNNING { color:#9a6700; }
+  .st-WRONG_ANSWER, .st-TIME_LIMIT, .st-RUNTIME_ERROR, .st-COMPILE_ERROR, .st-SYSTEM_ERROR { color:#cf222e; }
+  .muted { color:var(--muted); } label { display:block; margin:.6rem 0 .2rem; font-weight:600; }
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="{{ url_for('web.problem_list') }}">CloudJudge</a>
+  <a href="{{ url_for('web.problem_list') }}">Bài tập</a>
+  <a href="{{ url_for('web.scoreboard') }}">Bảng điểm</a>
+  {% if me %}<a href="{{ url_for('web.submission_list') }}">Bài đã nộp</a>{% endif %}
+  {% if me and me.role == 'teacher' %}<a href="{{ url_for('web.teacher_new_problem') }}">Tạo bài</a>{% endif %}
+  <span class="right">
+    {% if me %}
+      <span>{{ me.username }}{% if me.role == 'teacher' %} (GV){% endif %}</span>
+      <form method="post" action="{{ url_for('web.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button>Đăng xuất</button>
+      </form>
+    {% else %}<a href="{{ url_for('web.login') }}">Đăng nhập</a>{% endif %}
+  </span>
+</header>
+<main>
+  {% for cat, msg in get_flashed_messages(with_categories=true) %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</main>
+<footer>Phục vụ bởi <strong>{{ host }}</strong> · AZ <strong>{{ az }}</strong> · release {{ release }}</footer>
+</body>
+</html>

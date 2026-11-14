@@ -1,0 +1,8 @@
+#!/bin/bash
+# Chạy lệnh quản trị trên VM web/worker với cấu hình của máy: sudo cj-cli seed
+set -euo pipefail
+set -a
+. /etc/cloudjudge/cloudjudge.env
+set +a
+export PYTHONPATH=/opt/cj/app
+exec /opt/cj/venv/bin/python -m cloudjudge.cli "$@"

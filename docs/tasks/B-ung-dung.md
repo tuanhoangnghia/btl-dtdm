@@ -1,6 +1,6 @@
 # Nhiệm vụ B – Ứng dụng, image, cân bằng tải, tự mở rộng (HM 6)
 
-**Người phụ trách:** ______  · **Bắt đầu ngay, không cần chờ cụm:** 28–30/10 làm hoàn toàn trên laptop.
+**Người phụ trách:** Phương (OpenStack user `phuong`)  · **Bắt đầu ngay, không cần chờ cụm:** 28–30/10 làm hoàn toàn trên laptop.
 
 Đọc trước: `docs/CONTRACT.md` (bắt buộc), `db/schema.sql`, `KE_HOACH_TRIEN_KHAI.md` mục 2 (D8, D9, D11), 9, 10, 11.3, 12.3, 12.5, 12.6, 14.1.
 
@@ -55,18 +55,60 @@ image/
 | 8/11 | Quay video (B điều khiển) |
 
 ## Tiến độ
-- [ ] Compose dev chạy được
-- [ ] Web đủ route
-- [ ] Worker + sandbox
-- [ ] Seed, bài mẫu, loadtest, release, install.sh
-- [ ] `image/build-cj-base.sh`
-- [ ] Image `cj-base-v1` trên cụm → báo C
-- [ ] Release 0.1.0 trên Swift
-- [ ] Stack `cj-app` → báo A, C
-- [ ] Nộp bài qua IP public ra điểm
-- [ ] Scale worker 1→3→1, số liệu đo
-- [ ] Failover web
-- [ ] Báo cáo phần B
+- [ ] Compose dev chạy được: đã viết `app/docker-compose.dev.yml` + `dev.env.example` + `dev/02-users.sql`, **chưa chạy thử** (laptop chưa có Docker). Thay bằng bộ pytest không cần Docker (32 test qua)
+- [x] Web đủ route (login/logout, problems, submit, submissions, scoreboard đọc replica, teacher tạo bài, `/api/submit`, `/api/submissions/<id>`, `/healthz`, `/metrics`, footer hostname + AZ)
+- [x] Worker + sandbox: đã chạy `docker run` thật (trên controller, 31/10): 7 lời giải mẫu đúng kết quả, 6 kiểu tấn công bị chặn (`docs/evidence/B-cum-31-10.txt`)
+- [x] Seed, bài mẫu, loadtest, release, install.sh (+ unit systemd, `cj-cli`); `release.sh` đã đóng gói thử (NO_UPLOAD)
+- [x] `image/build-cj-base.sh` + `image/build-image.sh` (tự tạo builder → chờ SHUTOFF → snapshot → xóa builder)
+- [x] Heat `cj-app.yaml`, `web_member.yaml`, `worker.yaml`, `env/cj-app.env.yaml`, `deploy-cj-app.sh` (validate bằng Heat thật, stack chạy)
+- [x] Image `cj-base-v1` trên cụm (min_disk 10 GB) → **cần báo C**
+- [x] Release trên Swift: dùng **0.1.3** (0.1.0/0.1.1 đóng gói sai quyền, 0.1.2 chưa có bản sửa deadlock sandbox)
+- [x] Stack `cj-app` CREATE/UPDATE_COMPLETE: `lb_fip` 172.24.4.64, web az1 + az2, 1 worker. A đã DNAT :80 (public trả 503 của Octavia vì chưa có member khỏe)
+- [x] Nộp bài qua IP public ra điểm (10/11): seed xong, 7 lời giải mẫu đúng kết quả, `/scoreboard` đọc replica
+- [ ] Scale worker 1→3→1, số liệu đo: 1→2→1 qua API Heat (77 s / 15 s) và **qua alarm_url (HTTP 200, 70 s / 14 s)** đã đo; theo hàng đợi qua Alertmanager đã đo 11/11
+- [x] Loadtest 60 bài, 1 worker cố định (10/11): 60/60 ACCEPTED, chờ tb 289 s, p95 553 s
+- [x] `slow-sum` đo trên worker thật (`cj.medium`, 1 vCPU): ~1,47 s/test, ~8,4 s/bài → giữ n = 3·10^8
+- [x] Failover web (10/11): tắt web az1, gián đoạn ~24 s (khoảng một nửa request lỗi), sau đó az2 phục vụ 100%; bật lại nhận request sau 46 s
+- [x] Release **0.1.7** đang chạy trên cụm (sửa `az: local`, worker heartbeat 30 s, `/metrics` chặn qua LB). **Không dùng 0.1.6** (đóng gói nhầm code 0.1.5)
+- [x] Loadtest 60 bài có autoscale (11/11): chờ tb 194 s / p95 319 s, firing → worker mới nhận bài ~65 s, hàng đợi rỗng → 1 worker 190 s
+- [x] Scale qua alarm_url (10/11): worker 1→3→1, web 2→3→2
+- [ ] Báo cáo phần B (đã có nháp `docs/report/B-ung-dung.md`, còn thiếu số liệu đo)
 
 ## Nhật ký
-- 
+- 11/11 (B, theo yêu cầu C): bật cụm, chờ `cj-post-boot` (~9 phút), phát hành 0.1.7, loadtest có autoscale 10:52:36–10:58:21 UTC, về 1 worker 11:01:47, tắt cụm. Không động vào stack `cj-mon`. Release 0.1.6 hỏng vì `git bundle` thiếu commit gốc mà lệnh `git pull` trên controller lỗi không dừng script; lần sau chạy với `set -e` và kiểm tra commit trước khi `release.sh`. Số liệu: `docs/evidence/B-cum-11-11.txt`.
+- 10/11 tối (B): `/metrics` mở công khai qua LB. Chặn trong app theo IP nguồn: request đi qua amphora (net-public 10.0.1.0/24) nhận 403, Prometheus gọi thẳng từ net-app vẫn đọc được. Không dùng L7 policy của Octavia vì HAProxy so khớp đường dẫn thô, `/%6detrics` lọt qua. Code đã push, **chưa phát hành** (C đang giữ khóa); phát hành 0.1.6 rồi kiểm `curl http://<CTL_IP>/metrics` phải ra 403.
+- 10/11 tối (B): A đã sửa `cj-lb` (`cj-post-boot.service`). Phát hành 0.1.4 rồi 0.1.5 (`docs/evidence/B-cum-10-11.txt` mục 6–9).
+  - **Consumer ma khi scale in**: Heat xóa VM không đóng TCP và không có SIGTERM, trong khi heartbeat 300 s nên RabbitMQ vẫn giao bài cho máy đã chết, bài kẹt nhiều phút (`consumers=3` khi chỉ còn 1 worker). Sửa: chấm bài ở luồng riêng, ack bằng `add_callback_threadsafe`, heartbeat 30 s. Đo lại: bài rơi vào máy đã chết được giao lại sau ~92 s, 6/6 ACCEPTED.
+  - **Cooldown**: `worker_up` gửi lúc Heat còn cooldown vẫn trả HTTP 200 nhưng bị bỏ qua (log heat-engine: `is in cooldown (60)`). Cooldown tính từ lúc thêm máy xong, nên hai lần scale phải cách nhau hơn ~85 s.
+- 10/11 (B): `cj-data` của C đã chạy, chạy end-to-end trên cụm (`docs/evidence/B-cum-10-11.txt`).
+  - **Seed**: chạy `cj-cli seed` trên `cj-web-f00764a4`. Mật khẩu demo ở `~/b-secrets/seed-demo.env` của `phuong` trên controller (không ghi được vào `/home/cj/secrets`: Permission denied).
+  - **Lỗi `az: local`**: gunicorn lên trước metadata service khi cả cụm vừa bật, `lru_cache` nhớ luôn kết quả lỗi theo từng tiến trình (cùng một máy lúc trả az1 lúc trả local). Sửa: không nhớ kết quả lỗi, thử lại sau 30 s; `Services.instance` đọc lúc request. 33 test qua. Chưa phát hành.
+  - **`cj-lb` ERROR sau khi bật cụm**: amphora mất heartbeat lúc cụm tắt nên health manager tự failover ngay khi bật, nhưng nova-compute của compute-2 chưa lên → `No valid host` → cả 2 amphora và LB thành ERROR. Luồng dữ liệu vẫn chạy (amphora cũ còn sống), nhưng API Octavia không cho đổi member, nên web_up và rolling update của ASG web sẽ lỗi. Scale worker không bị ảnh hưởng. Cần `openstack loadbalancer failover cj-lb` khi cả 2 compute đã up; A nên xem lại quy trình bật cụm.
+- 31/10 khuya (B): A đã xong DNAT, sửa heat-api-cfn, thêm key `phuong` vào bastion.
+  - **DNAT**: `curl http://<CTL_IP>/healthz` → 503 do Octavia trả (chưa có web khỏe vì chưa có DB). Đúng.
+  - **Bastion**: vào VM bằng `ProxyJump cj-controller → cj@172.24.4.131 → cj@10.0.2.x` (mọi chặng dùng key `cloudjudge`). Worker chạy release 0.1.3, có `cj-sandbox:1`.
+  - **alarm_url**: `worker_down` → HTTP 200, còn 1 worker sau **14 s**; `worker_up` → HTTP 200, Heat tạo server sau 8 s, ACTIVE 18 s, `CJ_INSTALL_DONE` **70 s**. Đã trả về 1 worker.
+  - **slow-sum trên worker**: 4 test 5,88 s và 5,94 s (2 lần), wall 8,3–8,5 s/bài → ~7 bài/phút/worker. Giữ n = 3·10^8. `a-plus-b` ok.cpp 6,9 s/bài (gồm biên dịch), ok.py 3,2 s.
+- 31/10 tối (B): **Lên cụm.** Khóa B, SSH `cj-controller` (user `phuong`), repo đưa lên `~/cloudjudge` bằng git bundle. A đã tạo sẵn `app.env`, `data.env`, `chmod 1770 /home/cj/secrets`.
+  - **Image**: `cj-base-v1` đầu tiên (một phiên trước build trên `cj.medium`) có `min_disk` 20 GB → Nova từ chối boot trên `cj.small` (web, và RabbitMQ của C). Build lại trên builder `cj.small` (325 s) → `min_disk` 10. Image cũ đổi tên `cj-base-v1-old-202610311751`, chưa xóa.
+  - **Heat**: `description` không có nháy trong `{...}` chứa dấu phẩy làm hỏng tham số; Heat bản này không nhận `max_retries_down`. Đã sửa, validate bằng `openstack orchestration template validate`.
+  - **Release**: 0.1.0/0.1.1 có thư mục gốc quyền 700 (mktemp + umask 027) → `cjsvc` không đọc được code, web/worker không chạy. `release.sh` đã `chmod -R go=rX`, `install.sh` cũng sửa quyền. Dùng **0.1.2**.
+  - **AZ**: 1 ASG + soft-anti-affinity cho 2 web cùng rơi vào az1 (tạo song song, trọng số RAM). Tách 2 ASG ghim AZ: `web_asg_az2` luôn 1 máy, `web_asg_az1` 1–2 máy (đích của web_up/web_down). Tham số `web_min/web_max` đổi thành `web_az1_min/web_az1_max`.
+  - **Scale**: qua API Heat (`openstack stack resource signal cj-app worker_up`): server mới ACTIVE sau 22 s, cài xong + `:9200` OK sau **77 s**; `worker_down` còn 1 máy sau **15 s**.
+  - **alarm_url bị 403** (đường Alertmanager dùng): heat-api-cfn gọi Keystone `/v3/ec2tokens` không có xác thực, Keystone 2025.x từ chối (401). Cần A thêm credential vào `[ec2authtoken]` của Heat (xem tin nhắn cho A). Trong lúc chờ, phương án D11 (gọi `stack resource signal`) chạy được.
+  - **`app-alarms.env`**: URL có `&` nên phải để trong nháy đơn mới `source` được; đã sửa `deploy-cj-app.sh`.
+  - **Sandbox**: chạy `docker run` thật trên controller (Docker của Kolla tắt bridge nên build phải `--network host`). Phát hiện deadlock khi bài in vô hạn (luồng đọc gọi `docker kill` đồng bộ) → sửa (kill ở luồng riêng có timeout, vẫn đọc tiếp). Image thử đã xóa khỏi controller.
+  - **Chưa vào được VM qua bastion**: bastion tạo trước khi A thêm key của `phuong` vào `admin_ssh_pubkeys.txt`. VM web/worker có key (tạo sau). Đang đọc kết quả qua `openstack console log show`.
+- 31/10 (B): Làm toàn bộ phần không phụ thuộc A/C trên nhánh `b/app-phase1`.
+  - **App** (`app/`): Flask + SQLAlchemy Core, bảng khớp `db/schema.sql`. Mọi mốc thời gian app ghi là UTC do app tự đặt (không dùng `CURRENT_TIMESTAMP` của DB) để `cj_oldest_pending_seconds` đúng trên mọi máy. CSRF token cho form, cookie ký `SECRET_KEY`. Bộ render markdown tự viết (venv trong image không có thư viện markdown), có escape HTML.
+  - **Swift**: chỉ dùng `put_object/get_object/head_object` (user có quyền qua ACL bị 403 nếu PUT container, xem nhật ký A 29/10). Local dùng tempauth (`openstackswift/saio`).
+  - **MQ**: web mở kết nối ngắn cho mỗi lần publish + publisher confirm (tránh kết nối chết do gunicorn không xử lý heartbeat). Worker heartbeat 300 s vì callback chấm chạy đồng bộ. Queue khai báo `durable=True`, **không có argument nào** (C khai báo queue thì phải giống hệt, nếu không sẽ lỗi PRECONDITION_FAILED).
+  - **Worker**: at-least-once, idempotent (bài đã có kết quả cuối thì bỏ qua, đang `RUNNING` thì chấm lại). Mất DB → nack requeue + nghỉ 5 s. SIGTERM (scale in) → đóng kết nối, bài chưa ack về hàng đợi. Python: kiểm cú pháp bằng `ast.parse` trên worker → `COMPILE_ERROR`. C++: biên dịch trong sandbox (mount rw riêng bước này, 512 MB, 30 s).
+  - **Sandbox**: `cj-run` (PID 1 trong container) đo thời gian chỉ của chương trình, không tính thời gian docker tạo container; kết quả in ở dòng cuối stderr. Output bị chặn ở 8 MB.
+  - **Metric**: web dùng `PROMETHEUS_MULTIPROC_DIR` (gunicorn 3 tiến trình). `cj_pending_submissions`/`cj_oldest_pending_seconds` mọi máy web báo cùng giá trị toàn cục → C phải dùng `max()`.
+  - **Bài mẫu**: `a-plus-b` 6 test (2 test ±9·10^18 làm tràn `long long` → `overflow.cpp` ra WRONG_ANSWER 67 điểm), lời giải `ok.cpp/ok.py/wrong.py/compile_error.cpp/tle.py`. `slow-sum` 4 test dãy LCG n = 3·10^8, đáp án tính bằng phép nhảy affine O(log n) (`gen.py`, đã đối chiếu với duyệt trực tiếp). **Cần đo trên worker thật** rồi chỉnh n bằng `python gen.py <n>` để đạt ~1,5 s/test.
+  - **Seed**: `cj-cli seed` chạy lại được; mật khẩu demo từ `CJ_SEED_PASSWORD` hoặc sinh ngẫu nhiên in 1 lần; token loadtest từ `LOADTEST_TOKEN` (`~/secrets/app.env`), phải dài đúng 64 ký tự (`openssl rand -hex 32`).
+  - **Image**: `build-image.sh` nhúng `image/sandbox/*` vào user-data (base64), builder lỗi thì in `CJ_BUILD_FAILED` và không tắt máy. Image Docker pull đúng tag cố định ở CONTRACT mục 6 (KE_HOACH mục 9 còn ghi `:latest`, đã theo CONTRACT).
+  - **Heat**: tên máy `cj-web-<8 ký tự>` / `cj-worker-<8 ký tự>`; web ASG `rolling_updates` min_in_service 1. `deploy-cj-app.sh` truyền secret qua file tham số tạm (600), từ chối giá trị có khoảng trắng/nháy/`$`/`\`; ghi 4 alarm_url vào `<thư mục secret>/app-alarms.env` (640, group cj) cho C.
+  - **Kiểm thử**: `app/tests/` 32 test qua (web, API, CSRF, phân quyền, metrics, scoreboard, seed idempotent, grader AC/WA/TLE/RE/CE, Judge idempotent/chấm lại, cờ cách ly docker, cj-run, end-to-end HTTP + loadtest 20 bài).
+  - **Còn chờ**: A bàn giao user Linux `phuong` + SSH key + Tailscale (để chạy `build-image.sh`, `release.sh`); C xong `cj-data` (để `deploy-cj-app.sh`).

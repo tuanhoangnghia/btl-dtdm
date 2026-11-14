@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Bài tập · CloudJudge{% endblock %}
+{% block content %}
+<h1>Bài tập</h1>
+<table>
+  <tr><th>#</th><th>Bài</th><th>Giới hạn thời gian</th><th>Số test</th>{% if me %}<th>Điểm cao nhất</th>{% endif %}</tr>
+  {% for p in problems %}
+  <tr>
+    <td>{{ p.id }}</td>
+    <td><a href="{{ url_for('web.problem_view', slug=p.slug) }}">{{ p.title }}</a> <span class="muted">({{ p.slug }})</span></td>
+    <td>{{ p.time_limit_ms }} ms</td><td>{{ p.test_count }}</td>
+    {% if me %}<td>{{ best.get(p.id) if best.get(p.id) is not none else '–' }}</td>{% endif %}
+  </tr>
+  {% else %}<tr><td colspan="5" class="muted">Chưa có bài nào.</td></tr>{% endfor %}
+</table>
+{% endblock %}
