@@ -1,0 +1,10 @@
+# Grafana provisioning: nạp dashboard từ thư mục (cloudjudge.json được mount vào /etc/grafana/dashboards).
+apiVersion: 1
+providers:
+  - name: cloudjudge
+    folder: CloudJudge
+    type: file
+    disableDeletion: true
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards

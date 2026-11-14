@@ -1,0 +1,4 @@
+# cấu hình đã render ở local (có mật khẩu SMTP), sinh bởi local-up.sh
+.local/
+# thư mục tạm của check.sh
+.check.*/

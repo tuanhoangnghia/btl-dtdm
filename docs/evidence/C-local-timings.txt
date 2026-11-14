@@ -1,0 +1,40 @@
+# Số đo local (Docker Desktop/WSL2 trên laptop, MySQL 8.4 primary+replica) 2026-11-09T19:02:26Z
+## 1. Nạp dữ liệu mẫu: 200 user, 5 bài, 50 000 bài nộp
+nạp ở primary: 1278 ms
+replica bắt kịp sau khi primary xong: 1083 ms (submissions = 50000)
+## 2. Thời gian từ lúc INSERT trả về tới lúc đọc thấy ở replica, đo từ ngoài (gồm ~300 ms của docker exec trên Windows, chỉ là cận trên)
+  lần 1: 316 ms
+  lần 2: 310 ms
+  lần 3: 323 ms
+  lần 4: 303 ms
+  lần 5: 303 ms
+  lần 6: 329 ms
+  lần 7: 304 ms
+  lần 8: 382 ms
+  lần 9: 269 ms
+  lần 10: 419 ms
+## 3. Backup (mysqldump --single-transaction | gzip -9)
+2026-11-09T19:02:38Z backup OK: ./backups-bench/mysql/20261109-1902.sql.gz (625690 byte)
+thời gian backup: 1026 ms
+kích thước bản dump nén: 0.6 MB
+## 4. Restore (ghi đè primary, replica tự nhận qua binlog)
++-------+----------+-------------+
+|   200 |        5 |       50000 |
++-------+----------+-------------+
+thời gian restore ở primary: 3198 ms
+replica khớp lại sau restore: 905 ms (submissions = 50000)
+## 2b. Độ trễ nhân bản đo trong MySQL (performance_schema, 20 giao dịch 1 dòng)
+   = LAST_APPLIED_TRANSACTION_END_APPLY_TIMESTAMP (replica) - ORIGINAL_COMMIT_TIMESTAMP (primary)
+   min 4.2 ms · trung vị 6.4 ms · TB 6.7 ms · max 11.2 ms (n=20)
+## 1b. Kích thước CSDL cloudjudge sau ANALYZE
+problems: 5 dòng, 0.1 MB
+submissions: 49855 dòng, 14.6 MB
+users: 200 dòng, 0.1 MB
+## 5. Trạng thái replica cuối cùng
+           Replica_IO_Running: Yes
+          Replica_SQL_Running: Yes
+                   Last_Error: 
+        Seconds_Behind_Source: 0
+                Last_IO_Error: 
+               Last_SQL_Error: 
+## 6. Cảnh báo → Gmail SMTP nhận thư (send-test-alert.sh, đo bằng alertmanager_notifications_total{integration="email"}): 10549 ms (gồm group_wait 10 s)

@@ -1,0 +1,26 @@
+# Thử ReplicationBroken trên Docker local, 2026-11-09T18:38:59Z: STOP REPLICA SQL_THREAD ở replica
++0s ReplicationBroken: none
++10s ReplicationBroken: pending
++21s ReplicationBroken: pending
++31s ReplicationBroken: pending
++41s ReplicationBroken: pending
++52s ReplicationBroken: pending
++62s ReplicationBroken: pending
++72s ReplicationBroken: firing
+Alertmanager đang giữ:
+  ReplicationBroken local-mysql-replica critical active
+  InstanceDown local-web critical active
+  CloudJudgeScaleTest send-test-alert warning active
+  InstanceDown local-rabbitmq critical active
+  InstanceDown local-worker critical active
+  CloudJudgeTestAlert2 send-test-alert warning active
+alertmanager_notifications_failed_total{integration="email",reason="clientError"} 0
+alertmanager_notifications_failed_total{integration="email",reason="contextCanceled"} 0
+alertmanager_notifications_failed_total{integration="email",reason="contextDeadlineExceeded"} 0
+alertmanager_notifications_failed_total{integration="email",reason="other"} 0
+alertmanager_notifications_failed_total{integration="email",reason="serverError"} 0
+alertmanager_notifications_total{integration="email"} 5
+== START REPLICA SQL_THREAD
++0s ReplicationBroken: firing
++6s ReplicationBroken: firing
++11s ReplicationBroken: none

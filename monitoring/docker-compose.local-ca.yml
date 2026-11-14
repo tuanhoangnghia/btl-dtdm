@@ -1,0 +1,5 @@
+# Chỉ dùng kèm docker-compose.local.yml, do local-up.sh tự thêm khi máy có CA quét TLS (vd Avast). Không dùng trên cụm.
+services:
+  alertmanager:
+    volumes:
+      - ./.local/ca-bundle.crt:/etc/ssl/certs/ca-certificates.crt:ro

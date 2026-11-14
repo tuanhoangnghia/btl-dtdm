@@ -1,0 +1,54 @@
+# Thử replication ở local: mysql-primary + mysql-replica (GTID) + 2 mysqld-exporter. Mật khẩu ở đây chỉ dùng cho máy dev.
+#   bash db/local-up.sh          # dựng, nạp schema/user, nối replica, chạy test-replication.sh
+#   docker compose -f db/docker-compose.repl.yml down -v    # xóa sạch
+# Cổng trên máy: primary 13306, replica 13307 (không đụng 3306 của app/docker-compose.dev.yml), exporter 9104 / 9105.
+name: cloudjudge-db
+
+x-mysql: &mysql
+  image: mysql:8.4
+  # Docker Desktop trên Windows mount file với quyền 777, MySQL bỏ qua file cnf ghi được bởi mọi người,
+  # nên chép vào conf.d với quyền 644 rồi mới chạy entrypoint gốc.
+  entrypoint: ["sh", "-c", "cp /cj/my.cnf /etc/mysql/conf.d/cj.cnf && chmod 644 /etc/mysql/conf.d/cj.cnf && exec docker-entrypoint.sh mysqld"]
+  environment:
+    MYSQL_ROOT_PASSWORD: dev-root
+    MYSQL_ROOT_HOST: localhost
+  healthcheck:
+    test: ["CMD-SHELL", "MYSQL_PWD=dev-root mysql -uroot -N -e 'SELECT @@skip_networking' | grep -qx 0"]
+    interval: 5s
+    retries: 30
+
+x-exporter: &exporter
+  image: prom/mysqld-exporter:v0.16.0
+  environment:
+    MYSQLD_EXPORTER_PASSWORD: dev-exporter
+
+services:
+  mysql-primary:
+    <<: *mysql
+    container_name: cj-mysql-primary
+    ports: ["13306:3306"]
+    volumes:
+      - ./primary.cnf:/cj/my.cnf:ro
+      - primary-data:/var/lib/mysql
+
+  mysql-replica:
+    <<: *mysql
+    container_name: cj-mysql-replica
+    ports: ["13307:3306"]
+    volumes:
+      - ./replica.cnf:/cj/my.cnf:ro
+      - replica-data:/var/lib/mysql
+
+  exporter-primary:
+    <<: *exporter
+    command: ["--mysqld.address=mysql-primary:3306", "--mysqld.username=exporter"]
+    ports: ["9104:9104"]
+
+  exporter-replica:
+    <<: *exporter
+    command: ["--mysqld.address=mysql-replica:3306", "--mysqld.username=exporter"]
+    ports: ["9105:9104"]
+
+volumes:
+  primary-data:
+  replica-data:

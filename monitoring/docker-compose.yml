@@ -1,0 +1,54 @@
+# Giám sát trên máy monitor (10.0.2.11), version theo CONTRACT 6 (đã pull sẵn trong cj-base-v1).
+# Cấu hình đã render nằm ở CJ_MON_CONF (mặc định /etc/cj-mon, do render.sh sinh). cloud-init của cj-mon chạy:
+#   CJ_MON_CONF=/etc/cj-mon docker compose -f /opt/cj-mon/docker-compose.yml up -d
+# network_mode host: Prometheus gọi Alertmanager qua localhost, Grafana đọc Prometheus qua localhost. Cổng mở: 9090 / 9093 / 3000 (chỉ sg-bastion).
+name: cj-mon
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle          # nạp lại cấu hình: curl -X POST localhost:9090/-/reload
+    volumes:
+      - ${CJ_MON_CONF:-/etc/cj-mon}/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${CJ_MON_CONF:-/etc/cj-mon}/rules.yml:/etc/prometheus/rules.yml:ro
+      - prometheus-data:/prometheus
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --cluster.listen-address=        # 1 máy, tắt gossip
+    volumes:
+      - ${CJ_MON_CONF:-/etc/cj-mon}/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+
+  grafana:
+    image: grafana/grafana-oss:11.3.0
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PROM_URL: http://localhost:9090
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /etc/grafana/admin.pw
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/cloudjudge.json
+    volumes:
+      - ${CJ_MON_CONF:-/etc/cj-mon}/grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - ${CJ_MON_CONF:-/etc/cj-mon}/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ${CJ_MON_CONF:-/etc/cj-mon}/grafana/cloudjudge.json:/etc/grafana/dashboards/cloudjudge.json:ro
+      - ${CJ_MON_CONF:-/etc/cj-mon}/grafana/admin.pw:/etc/grafana/admin.pw:ro
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:

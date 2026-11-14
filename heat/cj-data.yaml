@@ -1,0 +1,209 @@
+heat_template_version: 2021-04-16
+description: >
+  CloudJudge lớp dữ liệu (C): MySQL 8.4 primary (az1, 10.0.3.10) + replica (az2, 10.0.3.11) nhân bản GTID,
+  RabbitMQ 4.1 (10.0.2.10), mỗi máy một volume Cinder ở /data, mysqld_exporter :9104 trên 2 máy MySQL,
+  backup hằng ngày lên Swift backups (credential cj-backup). KE_HOACH 11.2, CONTRACT 4/5/8. Triển khai: heat/deploy-cj-data.sh.
+  Việc trong VM do db/vm-bootstrap.sh làm (file trong db/ được nhúng bằng get_file).
+
+parameters:
+  image:          {type: string, default: cj-base-v1}
+  db_flavor:      {type: string, default: cj.medium}
+  mq_flavor:      {type: string, default: cj.small}
+  mq_az:          {type: string, default: az2, description: "AZ của RabbitMQ (primary ở az1, replica ở az2 cố định)"}
+  db_volume_gb:   {type: number, default: 10}
+  mq_volume_gb:   {type: number, default: 5}
+  net_data:       {type: string, description: "output net_data_id của cj-net"}
+  subnet_data:    {type: string, description: "output subnet_data_id của cj-net"}
+  net_app:        {type: string, description: "output net_app_id của cj-net"}
+  subnet_app:     {type: string, description: "output subnet_app_id của cj-net"}
+  sg_db:          {type: string, description: "output sg_db_id của cj-net"}
+  sg_mq:          {type: string, description: "output sg_mq_id của cj-net"}
+  admin_ssh_pubkeys_b64: {type: string, description: "base64 các SSH public key quản trị (user cj)"}
+  mysql_root_password: {type: string, hidden: true}
+  db_password:         {type: string, hidden: true}
+  db_ro_password:      {type: string, hidden: true}
+  repl_password:       {type: string, hidden: true}
+  exporter_password:   {type: string, hidden: true}
+  backup_db_password:  {type: string, hidden: true}
+  mq_password:         {type: string, hidden: true}
+  backup_ac_id:        {type: string, hidden: true}
+  backup_ac_secret:    {type: string, hidden: true}
+
+resources:
+  # ---------- Volume Cinder (giữ dữ liệu khi VM bị tạo lại) ----------
+  # Không đặt availability_zone cho volume: Cinder chỉ có zone mặc định (LVM trên controller), Nova cho gắn chéo zone.
+  primary_vol: {type: OS::Cinder::Volume, properties: {name: cj-mysql-primary-data, size: {get_param: db_volume_gb}}}
+  replica_vol: {type: OS::Cinder::Volume, properties: {name: cj-mysql-replica-data, size: {get_param: db_volume_gb}}}
+  mq_vol:      {type: OS::Cinder::Volume, properties: {name: cj-rabbitmq-data, size: {get_param: mq_volume_gb}}}
+
+  # ---------- Port IP cố định (CONTRACT 4) ----------
+  primary_port:
+    type: OS::Neutron::Port
+    properties:
+      name: cj-mysql-primary
+      network: {get_param: net_data}
+      fixed_ips: [{subnet: {get_param: subnet_data}, ip_address: 10.0.3.10}]
+      security_groups: [{get_param: sg_db}]
+  replica_port:
+    type: OS::Neutron::Port
+    properties:
+      name: cj-mysql-replica
+      network: {get_param: net_data}
+      fixed_ips: [{subnet: {get_param: subnet_data}, ip_address: 10.0.3.11}]
+      security_groups: [{get_param: sg_db}]
+  mq_port:
+    type: OS::Neutron::Port
+    properties:
+      name: cj-rabbitmq
+      network: {get_param: net_app}
+      fixed_ips: [{subnet: {get_param: subnet_app}, ip_address: 10.0.2.10}]
+      security_groups: [{get_param: sg_mq}]
+
+  # ---------- cloud-init ----------
+  # Mỗi máy nhận các file của db/ (anchor &f_* dùng lại cho 3 máy) và một data.env chỉ có secret nó cần.
+  primary_init:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        users: &users [{name: cj, shell: /bin/bash, sudo: "ALL=(ALL) NOPASSWD:ALL"}]
+        write_files:
+          - &f_boot   {path: /opt/cj-db/vm-bootstrap.sh,  permissions: "0755", content: {get_file: ../db/vm-bootstrap.sh}}
+          - &f_lib    {path: /opt/cj-db/lib.sh,           permissions: "0644", content: {get_file: ../db/lib.sh}}
+          - {path: /opt/cj-db/schema.sql,    permissions: "0644", content: {get_file: ../db/schema.sql}}
+          - {path: /opt/cj-db/users.sql.tpl, permissions: "0644", content: {get_file: ../db/users.sql.tpl}}
+          - {path: /opt/cj-db/setup-primary.sh,  permissions: "0755", content: {get_file: ../db/setup-primary.sh}}
+          - {path: /opt/cj-db/backup-mysql.sh,   permissions: "0755", content: {get_file: ../db/backup-mysql.sh}}
+          - {path: /opt/cj-db/restore-mysql.sh,  permissions: "0755", content: {get_file: ../db/restore-mysql.sh}}
+          - {path: /opt/cj-db/primary.cnf,   permissions: "0644", content: {get_file: ../db/primary.cnf}}
+          - path: /etc/cloudjudge/data.env
+            permissions: "0600"
+            content:
+              str_replace:
+                template: |
+                  ADMIN_SSH_PUBKEYS_B64=__KEYS__
+                  DATA_VOLUME_ID=__VOL__
+                  MYSQL_ROOT_PASSWORD=__ROOT__
+                  DB_PASSWORD=__APP__
+                  DB_RO_PASSWORD=__RO__
+                  REPL_PASSWORD=__REPL__
+                  EXPORTER_PASSWORD=__EXP__
+                  BACKUP_DB_PASSWORD=__BAK__
+                  BACKUP_AC_ID=__ACID__
+                  BACKUP_AC_SECRET=__ACSECRET__
+                params:
+                  __KEYS__: {get_param: admin_ssh_pubkeys_b64}
+                  __VOL__: {get_resource: primary_vol}
+                  __ROOT__: {get_param: mysql_root_password}
+                  __APP__: {get_param: db_password}
+                  __RO__: {get_param: db_ro_password}
+                  __REPL__: {get_param: repl_password}
+                  __EXP__: {get_param: exporter_password}
+                  __BAK__: {get_param: backup_db_password}
+                  __ACID__: {get_param: backup_ac_id}
+                  __ACSECRET__: {get_param: backup_ac_secret}
+        runcmd: [[bash, /opt/cj-db/vm-bootstrap.sh, mysql-primary]]
+
+  replica_init:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        users: *users
+        write_files:
+          - *f_boot
+          - *f_lib
+          - {path: /opt/cj-db/setup-replica.sh, permissions: "0755", content: {get_file: ../db/setup-replica.sh}}
+          - {path: /opt/cj-db/replica.cnf,      permissions: "0644", content: {get_file: ../db/replica.cnf}}
+          - path: /etc/cloudjudge/data.env
+            permissions: "0600"
+            content:
+              str_replace:
+                template: |
+                  ADMIN_SSH_PUBKEYS_B64=__KEYS__
+                  DATA_VOLUME_ID=__VOL__
+                  DB_PRIMARY_HOST=10.0.3.10
+                  MYSQL_ROOT_PASSWORD=__ROOT__
+                  REPL_PASSWORD=__REPL__
+                  EXPORTER_PASSWORD=__EXP__
+                params:
+                  __KEYS__: {get_param: admin_ssh_pubkeys_b64}
+                  __VOL__: {get_resource: replica_vol}
+                  __ROOT__: {get_param: mysql_root_password}
+                  __REPL__: {get_param: repl_password}
+                  __EXP__: {get_param: exporter_password}
+        runcmd: [[bash, /opt/cj-db/vm-bootstrap.sh, mysql-replica]]
+
+  mq_init:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        users: *users
+        write_files:
+          - *f_boot
+          - {path: /opt/cj-db/rabbitmq.conf,   permissions: "0644", content: {get_file: ../monitoring/rabbitmq/rabbitmq.conf}}
+          - {path: /opt/cj-db/enabled_plugins, permissions: "0644", content: {get_file: ../monitoring/rabbitmq/enabled_plugins}}
+          - path: /etc/cloudjudge/data.env
+            permissions: "0600"
+            content:
+              str_replace:
+                template: |
+                  ADMIN_SSH_PUBKEYS_B64=__KEYS__
+                  DATA_VOLUME_ID=__VOL__
+                  MQ_PASSWORD=__MQ__
+                params:
+                  __KEYS__: {get_param: admin_ssh_pubkeys_b64}
+                  __VOL__: {get_resource: mq_vol}
+                  __MQ__: {get_param: mq_password}
+        runcmd: [[bash, /opt/cj-db/vm-bootstrap.sh, rabbitmq]]
+
+  # ---------- Máy ảo ----------
+  # user_data_update_policy IGNORE: sửa script rồi stack update KHÔNG thay máy CSDL đang chạy (muốn áp dụng thì thay máy có chủ đích).
+  mysql_primary:
+    type: OS::Nova::Server
+    properties:
+      name: cj-mysql-primary
+      image: {get_param: image}
+      flavor: {get_param: db_flavor}
+      availability_zone: az1
+      networks: [{port: {get_resource: primary_port}}]
+      metadata: {cj_role: mysql-primary}
+      user_data_format: RAW
+      user_data: {get_attr: [primary_init, config]}
+      user_data_update_policy: IGNORE
+  mysql_replica:
+    type: OS::Nova::Server
+    properties:
+      name: cj-mysql-replica
+      image: {get_param: image}
+      flavor: {get_param: db_flavor}
+      availability_zone: az2
+      networks: [{port: {get_resource: replica_port}}]
+      metadata: {cj_role: mysql-replica}
+      user_data_format: RAW
+      user_data: {get_attr: [replica_init, config]}
+      user_data_update_policy: IGNORE
+  rabbitmq:
+    type: OS::Nova::Server
+    properties:
+      name: cj-rabbitmq
+      image: {get_param: image}
+      flavor: {get_param: mq_flavor}
+      availability_zone: {get_param: mq_az}
+      networks: [{port: {get_resource: mq_port}}]
+      metadata: {cj_role: rabbitmq}
+      user_data_format: RAW
+      user_data: {get_attr: [mq_init, config]}
+      user_data_update_policy: IGNORE
+
+  # Gắn volume sau khi máy ACTIVE; vm-bootstrap.sh chờ thiết bị /dev/disk/by-id/virtio-<volume id> xuất hiện
+  primary_vol_att: {type: OS::Cinder::VolumeAttachment, properties: {instance_uuid: {get_resource: mysql_primary}, volume_id: {get_resource: primary_vol}}}
+  replica_vol_att: {type: OS::Cinder::VolumeAttachment, properties: {instance_uuid: {get_resource: mysql_replica}, volume_id: {get_resource: replica_vol}}}
+  mq_vol_att:      {type: OS::Cinder::VolumeAttachment, properties: {instance_uuid: {get_resource: rabbitmq},      volume_id: {get_resource: mq_vol}}}
+
+outputs:
+  db_primary_ip: {value: {get_attr: [primary_port, fixed_ips, 0, ip_address]}}
+  db_replica_ip: {value: {get_attr: [replica_port, fixed_ips, 0, ip_address]}}
+  mq_ip:         {value: {get_attr: [mq_port, fixed_ips, 0, ip_address]}}
+  server_ids:
+    value: {mysql_primary: {get_resource: mysql_primary}, mysql_replica: {get_resource: mysql_replica}, rabbitmq: {get_resource: rabbitmq}}
+  volume_ids:
+    value: {mysql_primary: {get_resource: primary_vol}, mysql_replica: {get_resource: replica_vol}, rabbitmq: {get_resource: mq_vol}}

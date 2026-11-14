@@ -1,0 +1,11 @@
+# Grafana provisioning: datasource Prometheus. PROM_URL do docker compose đặt (cụm: http://localhost:9090, local: http://prometheus:9090).
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: ${PROM_URL}
+    isDefault: true
+    jsonData:
+      timeInterval: 5s
