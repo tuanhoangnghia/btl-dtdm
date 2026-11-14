@@ -1,0 +1,63 @@
+# Kiểm chứng hệ thống sau khi gộp code (14/11/2026, A chạy trên cụm vừa bật nguội lúc 22:08)
+# 1) cj-post-boot tự khôi phục LB khi boot nguội (journalctl -b -u cj-post-boot)
+Nov 14 22:09:12 os-controller systemd[1]: Started cj-post-boot.service - CloudJudge: khôi phục LB Octavia sau khi bật cụm nguội.
+Nov 14 22:10:45 22:10:45 post-boot: Keystone: OK (93s)
+Nov 14 22:12:05 22:12:05 post-boot: 2 nova-compute up: OK (80s)
+Nov 14 22:12:05 22:12:05 post-boot: chờ 150 giây cho health manager
+Nov 14 22:14:39 22:14:39 post-boot: LB 3bc33f9e-8378-4d2f-ac63-2236a55e33d4 ở ERROR -> lb-recover.sh
+Nov 14 22:14:42 3bc33f9e-8378-4d2f-ac63-2236a55e33d4: ERROR
+Nov 14 22:14:48 xóa VM amphora 469773cb-0528-4a7c-b48c-9f9086f6787a (b82fc4b1-9a72-4554-924b-33d332fe5f51)
+Nov 14 22:14:52 xóa VM amphora 06570fa5-baf1-449f-aa1d-4cb976b078fe (acf2b1dc-35f4-4095-9960-4cfaf9994167)
+Nov 14 22:18:08 180s ACTIVE
+Nov 14 22:18:10 f04fc676-47dc-4458-b2c3-52a38809a64e ALLOCATED BACKUP
+Nov 14 22:18:10 0df466f5-c30c-4851-8a5b-cd9e8967d374 ALLOCATED MASTER
+Nov 14 22:18:11 post-boot: LB cj-lb ACTIVE ONLINE
+Nov 14 22:18:11 22:18:11 post-boot: xong
+Nov 14 22:18:11 os-controller systemd[1]: cj-post-boot.service: Deactivated successfully.
+Nov 14 22:18:11 os-controller systemd[1]: cj-post-boot.service: Consumed 50.102s CPU time, 107.4M memory peak, 0B memory swap peak.
+
+# 2) scripts/cj-health.sh (của C)
+== Host controller
+  OK    container Kolla đều Up, không có unhealthy
+  OK    o-hm0 có IP (Octavia nói chuyện được với amphora)
+== Dịch vụ OpenStack
+  OK    nova service đều up
+  OK    neutron agent đều alive
+== Stack Heat
+  OK    cj-net UPDATE_COMPLETE
+  OK    cj-data UPDATE_COMPLETE
+  OK    cj-app UPDATE_COMPLETE
+  OK    cj-mon CREATE_COMPLETE
+== Máy ảo
+  OK    8 máy đều ACTIVE
+  OK    web = 2
+  OK    worker = 1
+  OK    web ở cả 2 AZ: az1 az2 
+== Lưu trữ
+  OK    volume Cinder đều in-use: cj-mysql-primary-data cj-rabbitmq-data cj-mysql-replica-data 
+  OK    Swift container submissions
+  OK    Swift container testcases
+  OK    Swift container releases
+  OK    Swift container backups
+== Cân bằng tải
+  OK    LB cj-lb ACTIVE ONLINE
+  OK    amphora: ALLOCATED BACKUP ALLOCATED MASTER 
+  OK    http://172.24.4.64/healthz → {"az":"az2","host":"cj-web-c2efe36e","status":"ok"}
+== Bên trong VM (qua bastion)
+  OK    replication chạy, trễ 0s
+  OK    hàng đợi submissions rỗng
+  OK    Prometheus: mọi mục tiêu up
+  WARN  1 cảnh báo đang bật (xem Alertmanager :9093)
+
+TẤT CẢ OK
+exit=0
+
+# 3) Truy cập công khai qua DNAT cổng 80 từ laptop, 8 lần (LB chia đều 2 AZ)
+      8 
+      4 {"az":"az1","host":"cj-web-7774f285","status":"ok"}
+      4 {"az":"az2","host":"cj-web-c2efe36e","status":"ok"}
+/problems    -> HTTP 200
+/scoreboard  -> HTTP 200
+/metrics     -> HTTP 403
+
+# 4) Cảnh báo đang bật: BackupStale (cron backup 02:00 không chạy vì cụm tắt ban đêm; bản backup gần nhất 10/11)
