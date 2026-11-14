@@ -25,4 +25,4 @@ Nhóm 3 người, mỗi người một phiên Claude, làm song song trên cùng
 ## Tài liệu gốc
 - Yêu cầu của thầy: `Bài tập lớn cuối kỳ - Hướng dẫn đề xuất dự án - Student-1.pdf`
 - Đề xuất đã nộp: `De_xuat_CloudJudge_ban_nop (2) (1).docx`
-- Hạn: nộp báo cáo + mã nguồn + video **09/11/2026**; bảo vệ **16/11/2026**.
+- Hạn: nộp báo cáo + mã nguồn + video **23/11/2026**; bảo vệ và vấn đáp **30/11/2026** (thầy điều chỉnh, thay cho 09/11 và 16/11).
